@@ -1,0 +1,21 @@
+# Before installing Python packages:
+# Install Visual C++ Build Tools:
+# https://visualstudio.microsoft.com/visual-cpp-build-tools/
+# Select "Desktop development with C++" workload
+# This will solve issues while downloading pytrec-eval
+
+sentence-transformers>=3.0.0
+chromadb>=0.5.0
+faiss-cpu>=1.8.0
+bm25s[full]>=0.2.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+requests>=2.32.0
+dagshub>=0.3.0
+mlflow>=2.16.0
+numpy>=1.26.0
+pandas>=2.2.0
+tqdm>=4.66.0
+pydantic>=2.9.0
+pytest>=8.3.0
+streamlit>=1.38.0
