@@ -5,6 +5,7 @@ import numpy as np
 
 class Embedder:
     def __init__(self, model_name="all-MiniLM-L6-v2", device="cpu"):
+        self.model_name = model_name
         self.model = SentenceTransformer(model_name, device=device)
         self.dimension = self.model.get_sentence_embedding_dimension()
     def encode(self, texts, batch_size=32, show_progress=True):
