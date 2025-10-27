@@ -1,1 +1,3 @@
 .venv/
+indices/
+__pycache__/
