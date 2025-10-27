@@ -1,0 +1,126 @@
+﻿.github
+	workflows
+.venv
+	etc
+		jupyter
+	Include
+		site
+	Lib
+		site-packages
+	Scripts
+		__pycache__
+		activate
+		activate.bat
+		Activate.ps1
+		alembic.exe
+		black.exe
+		blackd.exe
+		chroma.exe
+		coloredlogs.exe
+		dagshub.exe
+		deactivate.bat
+		distro.exe
+		dotenv.exe
+		f2py.exe
+		fastapi.exe
+		flask.exe
+		fonttools.exe
+		gql-cli.exe
+		hf.exe
+		httpx.exe
+		huggingface-cli.exe
+		humanfriendly.exe
+		isympy.exe
+		jp.py
+		jsonschema.exe
+		mako-render.exe
+		markdown-it.exe
+		mlflow.exe
+		normalizer.exe
+		numba
+		numpy-config.exe
+		onnxruntime_test.exe
+		pip.exe
+		pip3.12.exe
+		pip3.exe
+		py.test.exe
+		pybase64.exe
+		pyftmerge.exe
+		pyftsubset.exe
+		pygmentize.exe
+		pyproject-build.exe
+		pyrsa-decrypt.exe
+		pyrsa-encrypt.exe
+		pyrsa-keygen.exe
+		pyrsa-priv2pub.exe
+		pyrsa-sign.exe
+		pyrsa-verify.exe
+		pysemver.exe
+		pytest.exe
+		python.exe
+		pythonw.exe
+		pywin32_postinstall.exe
+		pywin32_postinstall.py
+		pywin32_testall.exe
+		pywin32_testall.py
+		sqlformat.exe
+		streamlit.cmd
+		streamlit.exe
+		tiny-agents.exe
+		torchfrtrace.exe
+		torchrun.exe
+		tqdm.exe
+		transformers-cli.exe
+		transformers.exe
+		ttx.exe
+		typer.exe
+		uvicorn.exe
+		waitress-serve.exe
+		watchfiles.exe
+		watchmedo.exe
+		websockets.exe
+		wsdump.exe
+	share
+		jupyter
+		man
+	pyvenv.cfg
+data
+experiments
+indices
+	demo_rag
+		chroma
+	hybrid_test
+		c1d584d8-4cb9-4f67-b262-d3fe179a7090
+		chroma.sqlite3
+	streamlit_rag
+		chroma
+	test_chroma
+		c0210623-7c44-4642-996e-3588cd6e930e
+		chroma.sqlite3
+notebooks
+src
+	__pycache__
+		bm25_retriever.cpython-312.pyc
+		chunker.cpython-312.pyc
+		embedder.cpython-312.pyc
+		hybrid_retriever.cpython-312.pyc
+		llm_client.cpython-312.pyc
+		rag_pipeline.cpython-312.pyc
+		vector_store.cpython-312.pyc
+		__init__.cpython-312.pyc
+	bm25_retriever.py
+	chunker.py
+	embedder.py
+	hybrid_retriever.py
+	llm_client.py
+	rag_pipeline.py
+	vector_store.py
+	__init__.py
+streamlit_app
+	__pycache__
+		app.cpython-312.pyc
+	app.py
+tests
+.gitignore
+requirements.txt
+structure.txt
