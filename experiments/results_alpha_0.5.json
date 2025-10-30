@@ -1,0 +1,19 @@
+{
+  "config": {
+    "alpha": 0.5,
+    "llm_model": "tinyllama",
+    "timestamp": "2025-10-31 01:44:13"
+  },
+  "metrics": {
+    "MRR@10": 0.0,
+    "NDCG@10": 0.0,
+    "Recall@5": 0.0,
+    "Recall@10": 0.0,
+    "Recall@20": 0.0,
+    "Recall@50": 0.0,
+    "Recall@100": 0.0,
+    "Latency_mean_ms": 32.135045528411865,
+    "Latency_p95_ms": 38.21591138839726,
+    "Latency_p99_ms": 87.8103804588317
+  }
+}
