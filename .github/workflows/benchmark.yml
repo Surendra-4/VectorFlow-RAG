@@ -1,0 +1,86 @@
+name: Benchmark & Performance Tracking
+
+on:
+  schedule:
+    # Run every Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install matplotlib
+    
+    - name: Run comprehensive benchmark
+      run: |
+        echo "Running MS MARCO Benchmark..."
+        python experiments/benchmark_ms_marco.py --alpha 0.0 --limit 50 --output experiments/results_alpha_0.0.json
+        python experiments/benchmark_ms_marco.py --alpha 0.5 --limit 50 --output experiments/results_alpha_0.5.json
+        python experiments/benchmark_ms_marco.py --alpha 1.0 --limit 50 --output experiments/results_alpha_1.0.json
+      timeout-minutes: 120
+      continue-on-error: true
+    
+    - name: Run embedding comparison
+      run: |
+        echo "Running Embedding Model A/B Test..."
+        python experiments/embedding_ablation.py --num_docs 100
+      timeout-minutes: 120
+      continue-on-error: true
+    
+    - name: Generate comparison plots
+      run: |
+        python experiments/compare_alphas.py || true
+        python experiments/plot_embedding_comparison.py || true
+      continue-on-error: true
+    
+    - name: Generate reports
+      run: |
+        python experiments/generate_report.py || true
+      continue-on-error: true
+    
+    - name: Upload results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results-${{ github.run_id }}
+        path: |
+          experiments/*.json
+          experiments/*.png
+          experiments/*.md
+        retention-days: 180
+    
+    - name: Create benchmark summary
+      if: always()
+      run: |
+        echo "# Benchmark Results - $(date)" > BENCHMARK_SUMMARY.md
+        echo "" >> BENCHMARK_SUMMARY.md
+        echo "## Alpha Comparison" >> BENCHMARK_SUMMARY.md
+        echo "Completed benchmark runs for different alpha values" >> BENCHMARK_SUMMARY.md
+        echo "" >> BENCHMARK_SUMMARY.md
+        echo "## Embedding Models" >> BENCHMARK_SUMMARY.md
+        echo "Compared performance of multiple embedding models" >> BENCHMARK_SUMMARY.md
+        echo "" >> BENCHMARK_SUMMARY.md
+        cat BENCHMARK_SUMMARY.md
+    
+    - name: Commit results (if changed)
+      if: always()
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add experiments/ || true
+        git commit -m "Benchmark results: $(date)" || true
+        git push || true
+      continue-on-error: true

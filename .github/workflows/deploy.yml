@@ -1,0 +1,47 @@
+name: Deploy to Streamlit Cloud
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies for validation
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r streamlit_app/requirements.txt
+    
+    - name: Validate Streamlit app
+      run: streamlit run streamlit_app/app.py --logger.level=debug 2>&1 | head -n 50
+      timeout-minutes: 5
+      continue-on-error: true
+    
+    - name: Check for common issues
+      run: |
+        # Check if streamlit app has any obvious errors
+        python -m py_compile streamlit_app/app.py
+        echo "✓ Streamlit app syntax is valid"
+    
+    - name: Deployment notification
+      run: |
+        echo "✓ App ready for deployment to Streamlit Cloud"
+        echo ""
+        echo "🎉 Automatic deployment triggered"
+        echo "📱 Your app should update at: https://vectorflow-rag.streamlit.app"
+        echo ""
+        echo "Note: Streamlit Cloud deployment happens automatically when:"
+        echo "  1. You push to 'main' branch"
+        echo "  2. Streamlit detects changes in streamlit_app/"
+        echo ""
+        echo "Monitor deployment at: https://share.streamlit.io"

@@ -1,0 +1,3 @@
+[flake8]
+max-line-length = 175
+exclude = .venv, .pytest_cache
