@@ -1,0 +1,53 @@
+{
+  "timestamp": "2025-10-31 02:23:21",
+  "models": {
+    "all-MiniLM-L6-v2": {
+      "model_name": "all-MiniLM-L6-v2",
+      "model_label": "MiniLM-L6 (80MB)",
+      "embedding_dim": 384,
+      "load_time_s": 4.201213836669922,
+      "doc_embedding_time_total_s": 0.41878581047058105,
+      "doc_embedding_latency_ms": 2.791905403137207,
+      "avg_query_latency_ms": 35.38312911987305,
+      "p95_query_latency_ms": 65.69763422012323,
+      "p99_query_latency_ms": 85.68991899490358,
+      "retrieval_quality_acc": 0.0,
+      "semantic_similarity_score": 0.4961678981781006,
+      "model_size_mb": 80,
+      "speed_class": "Fast",
+      "quality_class": "Good"
+    },
+    "all-mpnet-base-v2": {
+      "model_name": "all-mpnet-base-v2",
+      "model_label": "MPNet-Base (420MB)",
+      "embedding_dim": 768,
+      "load_time_s": 3.4551172256469727,
+      "doc_embedding_time_total_s": 2.3016858100891113,
+      "doc_embedding_latency_ms": 15.344572067260742,
+      "avg_query_latency_ms": 63.02659511566162,
+      "p95_query_latency_ms": 100.49985647201531,
+      "p99_query_latency_ms": 122.97796964645387,
+      "retrieval_quality_acc": 0.0,
+      "semantic_similarity_score": 0.5371542572975159,
+      "model_size_mb": 420,
+      "speed_class": "Moderate",
+      "quality_class": "Very Good"
+    },
+    "BAAI/bge-large-en-v1.5": {
+      "model_name": "BAAI/bge-large-en-v1.5",
+      "model_label": "BGE-Large (1.3GB)",
+      "embedding_dim": 1024,
+      "load_time_s": 7.058326005935669,
+      "doc_embedding_time_total_s": 7.223424673080444,
+      "doc_embedding_latency_ms": 48.15616448720296,
+      "avg_query_latency_ms": 176.06298923492432,
+      "p95_query_latency_ms": 195.2372670173645,
+      "p99_query_latency_ms": 197.62155771255493,
+      "retrieval_quality_acc": 0.0,
+      "semantic_similarity_score": 0.7360957264900208,
+      "model_size_mb": 1340,
+      "speed_class": "Slow",
+      "quality_class": "Excellent"
+    }
+  }
+}

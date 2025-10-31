@@ -12,6 +12,23 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.rag_pipeline import RAGPipeline
 import time
 
+# Add this at the top of app.py after imports
+
+import os
+
+# Check if running locally or on Streamlit Cloud
+if "STREAMLIT_CLOUD" in os.environ:
+    st.warning("⚠️ NOTE: Streamlit Cloud deployment requires Ollama running on your local machine or a remote server. For full functionality, run this app locally with: `ollama serve`")
+else:
+    # Local mode - check Ollama
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if response.status_code != 200:
+            st.sidebar.error("❌ Ollama not running! Start with: ollama serve")
+    except:
+        st.sidebar.error("❌ Ollama not reachable at http://localhost:11434")
+
+
 # Page configuration
 st.set_page_config(
     page_title="VectorFlow-RAG Demo",

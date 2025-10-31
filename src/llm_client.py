@@ -1,16 +1,22 @@
-import requests
 import json
 import sys
-import time
+
+import requests
+
 
 class OllamaClient:
     def __init__(self, model="tinyllama", base_url="http://localhost:11434"):
         self.model = model
         self.url = f"{base_url}/api/generate"
 
-    def generate(self, prompt: str, context: list = None,
-                 max_tokens: int = 512, temperature: float = 0.7,
-                 stream: bool = True) -> str:
+    def generate(
+        self,
+        prompt: str,
+        context: list = None,
+        max_tokens: int = 512,
+        temperature: float = 0.7,
+        stream: bool = True,
+    ) -> str:
         """
         Generate an answer using Ollama LLM with optional streaming output.
 
@@ -33,11 +39,8 @@ class OllamaClient:
         payload = {
             "model": self.model,
             "prompt": full_prompt,
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": temperature
-            },
-            "stream": True  # enable streaming
+            "options": {"num_predict": max_tokens, "temperature": temperature},
+            "stream": True,  # enable streaming
         }
 
         try:
