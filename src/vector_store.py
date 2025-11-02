@@ -34,12 +34,17 @@ class VectorStore:
             os.environ["CHROMA_DB_DIR"] = self.persist_directory
 
         try:
+            from chromadb import PersistentClient
             self.client = chromadb.PersistentClient(path=self.persist_directory)
 
         except Exception:
             # fallback to older API if available
             try:
-                self.client = chromadb.PersistentClient(path=self.persist_directory)
+                import chromadb
+                self.client = chromadb.Client(Settings(
+                    chroma_db_impl="duckdb+parquet",
+                    persist_directory=self.persist_directory
+                ))
             except Exception as exc:
                 raise RuntimeError(f"Could not initialize chromadb client: {exc}")
         self.collection_name = collection_name
