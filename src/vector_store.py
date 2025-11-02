@@ -2,8 +2,8 @@
 import os
 from typing import Any, Dict, Optional, Sequence
 import tempfile
-import chromadb
-from chromadb.config import Settings
+from chromadb import Client, Settings
+from chromadb.config import DEFAULT_TENANT, DEFAULT_DATABASE
 
 
 # Keep Embedder import usage local to callers. VectorStore is agnostic of embedder.
@@ -13,15 +13,13 @@ class VectorStore:
         persist_directory: str = "indices/chroma_db",
         collection_name: str = "vectorflow_docs",
     ):
-        
-        # Use Settings-backed Client to be compatible across chroma versions
+        # Verify persistence directory is writable
         try:
             os.makedirs(persist_directory, exist_ok=True)
             test_file = os.path.join(persist_directory, ".write_test")
             with open(test_file, "w") as f:
                 f.write("ok")
             os.remove(test_file)
-
         except Exception:
             persist_directory = tempfile.mkdtemp(prefix="chroma_")
 
@@ -33,20 +31,21 @@ class VectorStore:
             os.environ["CHROMA_DB_IMPL"] = "duckdb+parquet"
             os.environ["CHROMA_DB_DIR"] = self.persist_directory
 
+        # --- Updated initialization for Chroma ≥ 0.5.0 ---
         try:
-            from chromadb import PersistentClient
-            self.client = chromadb.PersistentClient(path=self.persist_directory)
+            self.client = Client(
+                tenant=DEFAULT_TENANT,
+                database=DEFAULT_DATABASE,
+                settings=Settings(
+                    allow_reset=True,
+                    is_persistent=True,
+                    persist_directory=self.persist_directory,
+                )
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Could not initialize chromadb client: {exc}")
+        # --------------------------------------------------
 
-        except Exception:
-            # fallback to older API if available
-            try:
-                import chromadb
-                self.client = chromadb.Client(Settings(
-                    chroma_db_impl="duckdb+parquet",
-                    persist_directory=self.persist_directory
-                ))
-            except Exception as exc:
-                raise RuntimeError(f"Could not initialize chromadb client: {exc}")
         self.collection_name = collection_name
         self.collection = self._get_or_create_collection(collection_name)
         self.documents = []   # to track added documents
@@ -56,7 +55,6 @@ class VectorStore:
         try:
             return self.client.get_collection(name)
         except Exception:
-            # chroma has get_or_create_collection or create_collection depending on version
             try:
                 return self.client.get_or_create_collection(
                     name=name, metadata={"desc": "docs"}
@@ -75,17 +73,14 @@ class VectorStore:
     def delete_collection(self, name: Optional[str] = None):
         name = name or self.collection_name
         try:
-            # try client-level delete
             if hasattr(self.client, "delete_collection"):
                 self.client.delete_collection(name)
             else:
-                # some chroma APIs remove collection via client.get_collection(name).delete()
                 col = self.client.get_collection(name)
                 if hasattr(col, "delete"):
                     col.delete()
         except Exception:
-            # ignore if collection doesn't exist
-            pass
+            pass  # ignore if collection doesn't exist
 
     def add_documents(
         self,
@@ -94,8 +89,6 @@ class VectorStore:
         metadatas: Optional[Sequence[Dict[str, Any]]] = None,
         ids: Optional[Sequence[str]] = None,
     ):
-        # Normalize inputs
-        # Convert numpy arrays to lists if needed
         try:
             embeddings_list = [
                 e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings
@@ -110,7 +103,6 @@ class VectorStore:
             else [{"source": "manual"} for _ in texts]
         )
 
-        # add expects lists in many chroma versions
         self.collection.add(
             documents=list(texts),
             embeddings=embeddings_list,
@@ -122,36 +114,31 @@ class VectorStore:
         self.embeddings.extend(embeddings_list)
         self.embedding_dim = len(embeddings_list[0]) if embeddings_list else 0
 
-    def search(self, query_embedding, n_results = 5):
-
+    def search(self, query_embedding, n_results=5):
         if not self.documents:
             return {"documents": [], "distances": [], "metadatas": []}
-    
-        # Accept query_embedding as list or numpy vector
+
         q_emb = (
             query_embedding.tolist()
             if hasattr(query_embedding, "tolist")
             else list(query_embedding)
         )
 
-        # guard: ensure k >=1
         n_results = max(1, int(n_results))
         res = self.collection.query(query_embeddings=[q_emb], n_results=n_results)
-        # query returns lists inside; return safe defaults if missing
         documents = res.get("documents", [[]])[0]
         distances = res.get("distances", [[]])[0]
         metadatas = res.get("metadatas", [[]])[0]
         return {"documents": documents, "distances": distances, "metadatas": metadatas}
-    
+
     def get_stats(self):
         stats = {
             "collection_name": self.collection_name,
             "num_documents": len(self.documents),
             "embedding_dim": getattr(self, "embedding_dim", 0),
-            "total_documents": len(self.documents)
-            }
+            "total_documents": len(self.documents),
+        }
         return stats
-
 
 
 if __name__ == "__main__":
