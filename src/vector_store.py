@@ -27,6 +27,12 @@ class VectorStore:
 
         self.persist_directory = persist_directory
 
+        # Ensure Chroma always writes to a writable temp dir if needed
+        if os.environ.get("GITHUB_ACTIONS") or not os.access(self.persist_directory, os.W_OK):
+            self.persist_directory = tempfile.mkdtemp(prefix="chroma_")
+            os.environ["CHROMA_DB_IMPL"] = "duckdb+parquet"
+            os.environ["CHROMA_DB_DIR"] = self.persist_directory
+
         try:
             self.client=chromadb.Client(
                 Settings(

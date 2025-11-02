@@ -10,9 +10,11 @@ from src.vector_store import VectorStore
 
 def safe_rmtree(path, retries=5):
     """Retry-safe delete to avoid Windows file lock errors"""
+    if not os.path.exists(path):
+        return
     for _ in range(retries):
         try:
-            shutil.rmtree(path)
+            shutil.rmtree(path, ignore_errors=True)
             return
         except PermissionError:
             time.sleep(0.5)
