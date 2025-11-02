@@ -20,9 +20,11 @@ class BM25Retriever:
         results = []
         for i in range(docs.shape[1]):
             idx = int(docs[0, i])
-            results.append(
-                {"text": self.corpus[idx], "score": float(scores[0, i]), "rank": i + 1}
-            )
+            score = float(scores[0, i])
+            if score > 0:
+                results.append(
+                    {"text": self.corpus[idx], "score": score, "rank": i + 1}
+                )
         return results
 
 

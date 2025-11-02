@@ -4,8 +4,18 @@ Unit tests for vector_store module
 import pytest
 import numpy as np
 import os
-import shutil
+import shutil, time
 from src.vector_store import VectorStore
+
+
+def safe_rmtree(path, retries=5):
+    """Retry-safe delete to avoid Windows file lock errors"""
+    for _ in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except PermissionError:
+            time.sleep(0.5)
 
 
 class TestVectorStoreInitialization:
@@ -25,7 +35,8 @@ class TestVectorStoreInitialization:
         assert vs.persist_directory == test_dir
         
         # Cleanup
-        shutil.rmtree(test_dir)
+        safe_rmtree(test_dir)
+
     
     def test_default_collection_creation(self):
         """Test that default collection is created"""
@@ -37,7 +48,7 @@ class TestVectorStoreInitialization:
         vs = VectorStore(persist_directory=test_dir)
         assert vs.collection is not None
         
-        shutil.rmtree(test_dir)
+        safe_rmtree(test_dir)
     
     def test_custom_collection_name(self):
         """Test custom collection naming"""
@@ -51,7 +62,7 @@ class TestVectorStoreInitialization:
         
         assert vs.collection is not None
         
-        shutil.rmtree(test_dir)
+        safe_rmtree(test_dir)
 
 
 class TestVectorStoreDocumentOperations:
@@ -62,13 +73,16 @@ class TestVectorStoreDocumentOperations:
         """Create test vector store"""
         test_dir = "indices\\test_vs_ops"
         if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+            safe_rmtree(test_dir)
         
         vs = VectorStore(persist_directory=test_dir)
         vs.create_collection(reset=True)
         yield vs
         
-        shutil.rmtree(test_dir)
+        # Ensure FAISS/HNSWlib files are released before cleanup
+        del vs
+        time.sleep(0.2)
+        safe_rmtree(test_dir)
     
     def test_add_single_document(self, vector_store):
         """Test adding a single document"""
@@ -177,7 +191,7 @@ class TestVectorStoreCollection:
         
         assert vs.collection.count() == 0
         
-        shutil.rmtree(test_dir)
+        safe_rmtree(test_dir)
     
     def test_get_stats(self):
         """Test getting collection statistics"""
@@ -197,7 +211,7 @@ class TestVectorStoreCollection:
         assert "total_documents" in stats
         assert stats["total_documents"] == 3
         
-        shutil.rmtree(test_dir)
+        safe_rmtree(test_dir)
 
 
 class TestVectorStorePersistence:
@@ -208,7 +222,7 @@ class TestVectorStorePersistence:
         test_dir = "indices\\test_vs_persist"
         
         if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+            safe_rmtree(test_dir)
         
         # Add documents in first instance
         vs1 = VectorStore(persist_directory=test_dir)
@@ -222,4 +236,4 @@ class TestVectorStorePersistence:
         # Data should still be there
         assert vs2.collection.count() == 2
         
-        shutil.rmtree(test_dir)
+        safe_rmtree(test_dir)

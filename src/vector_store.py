@@ -30,6 +30,8 @@ class VectorStore:
                 raise RuntimeError(f"Could not initialize chromadb client: {exc}")
         self.collection_name = collection_name
         self.collection = self._get_or_create_collection(collection_name)
+        self.documents = []   # to track added documents
+        self.embeddings = []  # to track stored embeddings
 
     def _get_or_create_collection(self, name: str):
         try:
@@ -97,14 +99,18 @@ class VectorStore:
             ids=ids,
         )
 
-    def search(self, query_embedding: Sequence[float], n_results: int = 5):
+        self.documents.extend(texts)
+        self.embeddings.extend(embeddings_list)
+        self.embedding_dim = len(embeddings_list[0]) if embeddings_list else 0
+
+    def search(self, query_embedding: Sequence[float], n_results = 5):
         # Accept query_embedding as list or numpy vector
         q_emb = (
             query_embedding.tolist()
             if hasattr(query_embedding, "tolist")
             else list(query_embedding)
         )
-        # guard: ensure n_results >=1
+        # guard: ensure k >=1
         n_results = max(1, int(n_results))
         res = self.collection.query(query_embeddings=[q_emb], n_results=n_results)
         # query returns lists inside; return safe defaults if missing
@@ -112,6 +118,16 @@ class VectorStore:
         distances = res.get("distances", [[]])[0]
         metadatas = res.get("metadatas", [[]])[0]
         return {"documents": documents, "distances": distances, "metadatas": metadatas}
+    
+    def get_stats(self):
+        stats = {
+            "collection_name": self.collection_name,
+            "num_documents": len(self.documents),
+            "embedding_dim": getattr(self, "embedding_dim", 0),
+            "total_documents": len(self.documents)
+            }
+        return stats
+
 
 
 if __name__ == "__main__":

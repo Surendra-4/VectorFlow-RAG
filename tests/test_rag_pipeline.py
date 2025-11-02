@@ -5,6 +5,18 @@ import pytest
 import os
 import shutil
 from src.rag_pipeline import RAGPipeline
+import time
+
+
+def safe_rmtree(path, retries=5):
+    """Retry-safe delete to avoid Windows file lock errors"""
+    for _ in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except PermissionError:
+            time.sleep(0.5)
+
 
 
 class TestRAGPipelineInitialization:
@@ -42,12 +54,12 @@ class TestDocumentIngestion:
         """Create test pipeline"""
         test_dir = "indices\\test_rag_ingest"
         if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+            safe_rmtree(test_dir)
         
         rag = RAGPipeline(index_dir=test_dir, alpha=0.5)
         yield rag
         
-        shutil.rmtree(test_dir, ignore_errors=True)
+        safe_rmtree(test_dir)
     
     def test_ingest_single_document(self, rag_pipeline):
         """Test ingesting single document"""
@@ -94,7 +106,7 @@ class TestRetrieval:
         """Create indexed pipeline"""
         test_dir = "indices\\test_rag_retrieval"
         if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+            safe_rmtree(test_dir)
         
         rag = RAGPipeline(index_dir=test_dir)
         
@@ -109,7 +121,7 @@ class TestRetrieval:
         
         yield rag
         
-        shutil.rmtree(test_dir, ignore_errors=True)
+        safe_rmtree(test_dir)
     
     def test_search_returns_results(self, indexed_pipeline):
         """Test search returns results"""
@@ -123,14 +135,14 @@ class TestRetrieval:
         """Test search fails without ingestion"""
         test_dir = "indices\\test_rag_no_ingest"
         if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+            safe_rmtree(test_dir)
         
         rag = RAGPipeline(index_dir=test_dir)
         
         with pytest.raises(ValueError):
             rag.search("query")
         
-        shutil.rmtree(test_dir, ignore_errors=True)
+        safe_rmtree(test_dir)
 
 
 class TestPipelineStats:
@@ -140,7 +152,7 @@ class TestPipelineStats:
         """Test getting pipeline statistics"""
         test_dir = "indices\\test_rag_stats"
         if os.path.exists(test_dir):
-            shutil.rmtree(test_dir)
+            safe_rmtree(test_dir)
         
         rag = RAGPipeline(index_dir=test_dir, alpha=0.7)
         
@@ -157,4 +169,4 @@ class TestPipelineStats:
         assert stats["documents_ingested"] == 3
         assert stats["alpha"] == 0.7
         
-        shutil.rmtree(test_dir, ignore_errors=True)
+        safe_rmtree(test_dir)
