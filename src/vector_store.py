@@ -34,12 +34,7 @@ class VectorStore:
             os.environ["CHROMA_DB_DIR"] = self.persist_directory
 
         try:
-            self.client=chromadb.Client(
-                Settings(
-                    chroma_db_impl="duckdb+parquet",
-                    persist_directory=self.persist_directory,
-                )
-            )
+            self.client = chromadb.PersistentClient(path=self.persist_directory)
 
         except Exception:
             # fallback to older API if available

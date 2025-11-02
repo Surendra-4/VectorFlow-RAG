@@ -105,7 +105,7 @@ class RAGPipeline:
         print("\n[Step 3/4] Building vector index...")
         if reset:
             try:
-                self.vector_store.client.delete_collection("vectorflow_docs")
+                self.vector_store.delete_collection()
                 print("  ✓ Old collection deleted successfully")
             except Exception as e:
                 print(f"  (warning) could not delete collection: {e}")
