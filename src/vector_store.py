@@ -2,29 +2,19 @@ import os
 import tempfile
 from typing import Any, Dict, Optional, Sequence
 
-# Try to support both new and older chromadb releases.
-try:
-    # Chroma >= 0.5.x (new API)
-    from chromadb import Client  # PersistentClient is deprecated
-    from chromadb.config import Settings as ChromaSettings  # type: ignore
-    CHROMA_CLIENT_TYPE = "persistent"
-except Exception:
-    try:
-        # Older chromadb (<0.5) fallback
-        from chromadb import Client, Settings  # type: ignore
-        from chromadb.config import DEFAULT_TENANT, DEFAULT_DATABASE  # type: ignore
-        CHROMA_CLIENT_TYPE = "legacy"
-    except Exception:
-        CHROMA_CLIENT_TYPE = "none"
-
-
 class VectorStore:
+    """
+    Lightweight wrapper around Chroma that tries the modern API first
+    and falls back to legacy API if necessary. Designed for CI usage
+    where disk permissions and existing DB files can cause issues.
+    """
+
     def __init__(
         self,
         persist_directory: str = "indices/chroma_db",
         collection_name: str = "vectorflow_docs",
     ):
-        # make path writable; fall back to temp dir if needed
+        # prepare persistence dir (use tmp if not writable or in CI)
         try:
             os.makedirs(persist_directory, exist_ok=True)
             test_file = os.path.join(persist_directory, ".write_test")
@@ -35,60 +25,95 @@ class VectorStore:
         except Exception:
             self.persist_directory = tempfile.mkdtemp(prefix="chroma_")
 
-        # In CI or if path not writable force temp dir and persistent backend env
         if os.environ.get("GITHUB_ACTIONS") or not os.access(self.persist_directory, os.W_OK):
+            # force a clean temp dir in CI or when not writable
             self.persist_directory = tempfile.mkdtemp(prefix="chroma_")
+            # recommended backend for local/CI durable storage
             os.environ.setdefault("CHROMA_DB_IMPL", "duckdb+parquet")
             os.environ.setdefault("CHROMA_DB_DIR", self.persist_directory)
 
-        # Initialize client with whichever API is available
+        # Initialize chroma client. Try new API then legacy.
+        self.client = None
         try:
-            if CHROMA_CLIENT_TYPE == "persistent":
-                # New API (Chroma ≥0.5.x)
-                settings = ChromaSettings(
-                    allow_reset=True,
-                    is_persistent=True,
-                    persist_directory=self.persist_directory,
-                )
-                self.client = Client(settings)
-            elif CHROMA_CLIENT_TYPE == "legacy":
-                # Older API fallback
+            import chromadb
+            # preferred path: PersistentClient available in newer releases
+            if hasattr(chromadb, "PersistentClient"):
+                try:
+                    from chromadb import PersistentClient  # type: ignore
+                    self.client = PersistentClient(path=self.persist_directory)
+                except Exception as e_new:
+                    # If PersistentClient fails, attempt fallback to Client API
+                    # (this can happen on some patched releases). We'll try legacy next.
+                    last_exc = e_new
+                    self.client = None
+            else:
+                last_exc = None
+        except Exception as ie:
+            # chromadb not importable at all
+            raise RuntimeError(f"chromadb import failed: {ie}") from ie
+
+        # If we don't have a client yet, attempt legacy Client path
+        if self.client is None:
+            try:
+                # legacy API fallback
+                from chromadb import Client, Settings  # type: ignore
+                # Some older versions require DEFAULT_TENANT/DEFAULT_DATABASE
+                try:
+                    from chromadb.config import DEFAULT_TENANT, DEFAULT_DATABASE  # type: ignore
+                    tenant = DEFAULT_TENANT
+                    database = DEFAULT_DATABASE
+                except Exception:
+                    tenant = None
+                    database = None
+
                 settings = Settings(
                     allow_reset=True,
                     is_persistent=True,
                     persist_directory=self.persist_directory,
                 )
-                self.client = Client(
-                    tenant=DEFAULT_TENANT,
-                    database=DEFAULT_DATABASE,
-                    settings=settings,
-                )
-            else:
-                raise RuntimeError("chromadb not installed or importable")
-        except Exception as exc:
-            raise RuntimeError(f"Could not initialize chromadb client: {exc}")
 
+                if tenant is not None and database is not None:
+                    self.client = Client(tenant=tenant, database=database, settings=settings)
+                else:
+                    # Some older Client signatures accept only settings
+                    self.client = Client(settings=settings)
+            except Exception as legacy_exc:
+                # Provide clear error with both exceptions if available
+                combined = f"PersistentClient error: {locals().get('last_exc', None)}; Legacy Client error: {legacy_exc}"
+                raise RuntimeError(f"Could not initialize chromadb client: {combined}") from legacy_exc
+
+        # Confirm client created
+        if self.client is None:
+            raise RuntimeError("Could not initialize chromadb client: unknown error")
+
+        # Setup collection and in-memory trackers
         self.collection_name = collection_name
         self.collection = self._get_or_create_collection(collection_name)
-        self.documents = []   # in-memory tracking for tests
+        self.documents = []
         self.embeddings = []
 
     def _get_or_create_collection(self, name: str):
-        """Use get_or_create_collection when available, fallback to create/get."""
+        # Prefer get_or_create_collection if present
         if hasattr(self.client, "get_or_create_collection"):
             try:
                 return self.client.get_or_create_collection(name=name, metadata={"desc": "docs"})
             except Exception:
                 pass
 
-        try:
-            if hasattr(self.client, "get_collection"):
+        # Try get_collection
+        if hasattr(self.client, "get_collection"):
+            try:
                 return self.client.get_collection(name)
-        except Exception:
-            pass
+            except Exception:
+                pass
 
+        # Try create_collection
         if hasattr(self.client, "create_collection"):
-            return self.client.create_collection(name=name, metadata={"desc": "docs"})
+            try:
+                return self.client.create_collection(name=name, metadata={"desc": "docs"})
+            except Exception:
+                pass
+
         raise RuntimeError("Unable to create or retrieve collection from chromadb client")
 
     def create_collection(self, reset: bool = False):
@@ -101,17 +126,19 @@ class VectorStore:
         name = name or self.collection_name
         try:
             if hasattr(self.client, "delete_collection"):
+                # newer clients
                 self.client.delete_collection(name)
                 return
-            col = None
+            # else try to get collection and call its delete
             if hasattr(self.client, "get_collection"):
                 try:
                     col = self.client.get_collection(name)
                 except Exception:
                     col = None
-            if col is not None and hasattr(col, "delete"):
-                col.delete()
+                if col is not None and hasattr(col, "delete"):
+                    col.delete()
         except Exception:
+            # swallow deletion errors (tests expect resilience)
             pass
 
     def add_documents(
@@ -121,16 +148,16 @@ class VectorStore:
         metadatas: Optional[Sequence[Dict[str, Any]]] = None,
         ids: Optional[Sequence[str]] = None,
     ):
+        # normalize embeddings
         try:
-            embeddings_list = [
-                e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings
-            ]
+            embeddings_list = [e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings]
         except Exception:
             embeddings_list = list(embeddings)
 
         ids = list(ids) if ids else [f"id_{i}" for i in range(len(texts))]
         metadatas = list(metadatas) if metadatas is not None else [{"source": "manual"} for _ in texts]
 
+        # collection.add is stable across versions
         self.collection.add(
             documents=list(texts),
             embeddings=embeddings_list,
