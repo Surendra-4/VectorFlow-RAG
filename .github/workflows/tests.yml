@@ -43,6 +43,11 @@ jobs:
     - name: Force reinstall Chroma latest
       run: pip install --upgrade --force-reinstall "chromadb>=0.5.3"
 
+    # Step 4.2: Fix huggingface-hub compatibility
+    - name: Fix huggingface-hub version
+      run: pip install "huggingface-hub<1.0" --force-reinstall
+
+
     # Step 5: Code formatting check (Black)
     - name: Check code formatting with Black
       run: black --check src/ tests/ --verbose
@@ -120,6 +125,10 @@ jobs:
 
     - name: Force reinstall Chroma latest
       run: pip install --upgrade --force-reinstall chromadb>=0.5.3
+
+    - name: Fix huggingface-hub version
+      run: pip install "huggingface-hub<1.0" --force-reinstall
+
 
     
     - name: Run MS MARCO benchmark
