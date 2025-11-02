@@ -33,15 +33,8 @@ class VectorStore:
 
         # --- Updated initialization for Chroma ≥ 0.5.0 ---
         try:
-            self.client = Client(
-                tenant=DEFAULT_TENANT,
-                database=DEFAULT_DATABASE,
-                settings=Settings(
-                    allow_reset=True,
-                    is_persistent=True,
-                    persist_directory=self.persist_directory,
-                )
-            )
+            from chromadb import PersistentClient
+            self.client = PersistentClient(path=self.persist_directory)
         except Exception as exc:
             raise RuntimeError(f"Could not initialize chromadb client: {exc}")
         # --------------------------------------------------
