@@ -38,7 +38,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pytest-cov pytest-xdist flake8 black isort mypy
-    
+
+    # Step 4.1: Force reinstall Chroma latest
+    - name: Force reinstall Chroma latest
+      run: pip install --upgrade --force-reinstall "chromadb>=0.5.3"
+
     # Step 5: Code formatting check (Black)
     - name: Check code formatting with Black
       run: black --check src/ tests/ --verbose
@@ -113,6 +117,10 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: Force reinstall Chroma latest
+      run: pip install --upgrade --force-reinstall chromadb>=0.5.3
+
     
     - name: Run MS MARCO benchmark
       run: python experiments/benchmark_ms_marco.py --alpha 0.5 --limit 30

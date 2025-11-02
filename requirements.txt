@@ -5,7 +5,7 @@
 # This will solve issues while downloading pytrec-eval
 
 sentence-transformers>=3.0.0
-chromadb>=0.5.0
+chromadb>=0.5.3
 faiss-cpu>=1.8.0
 bm25s[full]>=0.2.0
 fastapi>=0.115.0
