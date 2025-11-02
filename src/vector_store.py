@@ -1,7 +1,7 @@
 # src/vector_store.py
 import os
 from typing import Any, Dict, Optional, Sequence
-
+import tempfile
 import chromadb
 from chromadb.config import Settings
 
@@ -13,19 +13,27 @@ class VectorStore:
         persist_directory: str = "indices/chroma_db",
         collection_name: str = "vectorflow_docs",
     ):
-        os.makedirs(persist_directory, exist_ok=True)
-        self.persist_directory = persist_directory
+        
         # Use Settings-backed Client to be compatible across chroma versions
         try:
-            self.client = chromadb.Client(
+            os.makedirs(persist_directory, exist_ok=True)
+            test_file = os.path.join(persist_directory, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("ok")
+            os.remove(test_file)
+
+        try:
+            self.client=chromadb.Client(
                 Settings(
-                    chroma_db_impl="duckdb+parquet", persist_directory=persist_directory
+                    chroma_db_impl="duckdb+parquet",
+                    persist_directory=self.persist_directory,
                 )
             )
+
         except Exception:
             # fallback to older API if available
             try:
-                self.client = chromadb.PersistentClient(path=persist_directory)
+                self.client = chromadb.PersistentClient(path=self.persist_directory)
             except Exception as exc:
                 raise RuntimeError(f"Could not initialize chromadb client: {exc}")
         self.collection_name = collection_name
@@ -103,13 +111,18 @@ class VectorStore:
         self.embeddings.extend(embeddings_list)
         self.embedding_dim = len(embeddings_list[0]) if embeddings_list else 0
 
-    def search(self, query_embedding: Sequence[float], n_results = 5):
+    def search(self, query_embedding, n_results = 5):
+
+        if not self.documents:
+            return {"documents": [], "distances": [], "metadatas": []}
+    
         # Accept query_embedding as list or numpy vector
         q_emb = (
             query_embedding.tolist()
             if hasattr(query_embedding, "tolist")
             else list(query_embedding)
         )
+        
         # guard: ensure k >=1
         n_results = max(1, int(n_results))
         res = self.collection.query(query_embeddings=[q_emb], n_results=n_results)
