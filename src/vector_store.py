@@ -4,12 +4,13 @@ from typing import Any, Dict, Optional, Sequence
 
 # Try to support both new and older chromadb releases.
 try:
-    # Chroma >= 0.5.x
-    from chromadb import PersistentClient  # type: ignore
+    # Chroma >= 0.5.x (new API)
+    from chromadb import Client  # PersistentClient is deprecated
+    from chromadb.config import Settings as ChromaSettings  # type: ignore
     CHROMA_CLIENT_TYPE = "persistent"
 except Exception:
-    # Older chromadb (<0.5) fallback
     try:
+        # Older chromadb (<0.5) fallback
         from chromadb import Client, Settings  # type: ignore
         from chromadb.config import DEFAULT_TENANT, DEFAULT_DATABASE  # type: ignore
         CHROMA_CLIENT_TYPE = "legacy"
@@ -37,17 +38,21 @@ class VectorStore:
         # In CI or if path not writable force temp dir and persistent backend env
         if os.environ.get("GITHUB_ACTIONS") or not os.access(self.persist_directory, os.W_OK):
             self.persist_directory = tempfile.mkdtemp(prefix="chroma_")
-            # ensure duckdb+parquet backend if older code expects it
             os.environ.setdefault("CHROMA_DB_IMPL", "duckdb+parquet")
             os.environ.setdefault("CHROMA_DB_DIR", self.persist_directory)
 
         # Initialize client with whichever API is available
         try:
             if CHROMA_CLIENT_TYPE == "persistent":
-                # Newer API
-                self.client = PersistentClient(path=self.persist_directory)  # type: ignore
+                # New API (Chroma ≥0.5.x)
+                settings = ChromaSettings(
+                    allow_reset=True,
+                    is_persistent=True,
+                    persist_directory=self.persist_directory,
+                )
+                self.client = Client(settings)
             elif CHROMA_CLIENT_TYPE == "legacy":
-                # Older API fallback. Keep minimal settings to avoid legacy-config errors.
+                # Older API fallback
                 settings = Settings(
                     allow_reset=True,
                     is_persistent=True,
@@ -70,24 +75,20 @@ class VectorStore:
 
     def _get_or_create_collection(self, name: str):
         """Use get_or_create_collection when available, fallback to create/get."""
-        # Prefer get_or_create_collection if present
         if hasattr(self.client, "get_or_create_collection"):
             try:
                 return self.client.get_or_create_collection(name=name, metadata={"desc": "docs"})
             except Exception:
                 pass
 
-        # Try get_collection then create_collection
         try:
             if hasattr(self.client, "get_collection"):
                 return self.client.get_collection(name)
         except Exception:
             pass
 
-        # Last resort create
         if hasattr(self.client, "create_collection"):
             return self.client.create_collection(name=name, metadata={"desc": "docs"})
-        # If client returned something else raise
         raise RuntimeError("Unable to create or retrieve collection from chromadb client")
 
     def create_collection(self, reset: bool = False):
@@ -99,11 +100,9 @@ class VectorStore:
     def delete_collection(self, name: Optional[str] = None):
         name = name or self.collection_name
         try:
-            # Some clients expose delete_collection on client
             if hasattr(self.client, "delete_collection"):
                 self.client.delete_collection(name)
                 return
-            # others require getting collection object then deleting
             col = None
             if hasattr(self.client, "get_collection"):
                 try:
@@ -122,7 +121,6 @@ class VectorStore:
         metadatas: Optional[Sequence[Dict[str, Any]]] = None,
         ids: Optional[Sequence[str]] = None,
     ):
-        # normalize embeddings to python lists
         try:
             embeddings_list = [
                 e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings
@@ -133,7 +131,6 @@ class VectorStore:
         ids = list(ids) if ids else [f"id_{i}" for i in range(len(texts))]
         metadatas = list(metadatas) if metadatas is not None else [{"source": "manual"} for _ in texts]
 
-        # call collection.add - same across versions
         self.collection.add(
             documents=list(texts),
             embeddings=embeddings_list,
@@ -152,7 +149,6 @@ class VectorStore:
         q_emb = query_embedding.tolist() if hasattr(query_embedding, "tolist") else list(query_embedding)
         n_results = max(1, int(n_results))
 
-        # unified call for query
         res = self.collection.query(query_embeddings=[q_emb], n_results=n_results)
         documents = res.get("documents", [[]])[0]
         distances = res.get("distances", [[]])[0]

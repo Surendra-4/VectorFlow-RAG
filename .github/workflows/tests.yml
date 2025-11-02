@@ -41,7 +41,7 @@ jobs:
 
     # Step 4.1: Force reinstall Chroma latest
     - name: Force reinstall Chroma latest
-      run: pip install --upgrade --force-reinstall "chromadb>=0.5.3"
+      run: pip install -U "chromadb>=0.5.3"
 
     # Step 4.2: Fix huggingface-hub compatibility
     - name: Fix huggingface-hub version
@@ -124,7 +124,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Force reinstall Chroma latest
-      run: pip install --upgrade --force-reinstall chromadb>=0.5.3
+      run: pip install -U "chromadb>=0.5.3"
 
     - name: Fix huggingface-hub version
       run: pip install "huggingface-hub<1.0" --force-reinstall
