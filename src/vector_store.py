@@ -22,6 +22,11 @@ class VectorStore:
                 f.write("ok")
             os.remove(test_file)
 
+        except Exception:
+            persist_directory = tempfile.mkdtemp(prefix="chroma_")
+
+        self.persist_directory = persist_directory
+
         try:
             self.client=chromadb.Client(
                 Settings(
@@ -122,7 +127,7 @@ class VectorStore:
             if hasattr(query_embedding, "tolist")
             else list(query_embedding)
         )
-        
+
         # guard: ensure k >=1
         n_results = max(1, int(n_results))
         res = self.collection.query(query_embeddings=[q_emb], n_results=n_results)
