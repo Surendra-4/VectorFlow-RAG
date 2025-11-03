@@ -38,15 +38,10 @@ class VectorStore:
             persist_directory = str(Path(persist_directory))
 
         # Ensure writable directory
-        try:
-            Path(persist_directory).mkdir(parents=True, exist_ok=True)
-            test_file = Path(persist_directory) / ".write_test"
-            test_file.write_text("ok")
-            test_file.unlink()
-            self.persist_directory = persist_directory
-        except Exception as e:
-            print(f"⚠ Warning: Could not use {persist_directory}: {e}")
-            self.persist_directory = tempfile.mkdtemp(prefix="chroma_")
+        # Just use the path as-is, don't try to test it
+        Path(persist_directory).mkdir(parents=True, exist_ok=True)
+        self.persist_directory = persist_directory
+
 
         # Enforce tmp dir for CI environments (GitHub Actions)
         if os.environ.get("GITHUB_ACTIONS") or not os.access(
