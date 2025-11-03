@@ -1,3 +1,5 @@
+# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\.github\workflows\tests.yml
+
 name: Tests & Quality Checks
 
 on:
@@ -36,19 +38,17 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pytest-cov pytest-xdist flake8 black isort mypy
-    
+
     # NOTE: Removed "Force reinstall Chroma" and "Fix huggingface-hub" steps
     # because requirements.txt now has proper version pinning
     
     # Step 5: Code formatting check (Black)
     - name: Check code formatting with Black
       run: black --check src/ tests/ --verbose
-      continue-on-error: true  # Don't fail workflow on formatting issues
     
     # Step 6: Import sorting check (isort)
     - name: Check import sorting with isort
       run: isort --check-only src/ tests/ --verbose
-      continue-on-error: true  # Don't fail workflow on import issues
     
     # Step 7: Linting (Flake8)
     - name: Lint with flake8
@@ -57,7 +57,6 @@ jobs:
         flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
         # Exit-code is 0 even if there are errors
         flake8 src/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      continue-on-error: true  # Don't fail workflow on linting warnings
     
     # Step 8: Type checking (mypy) - optional
     - name: Type checking with mypy
@@ -67,12 +66,10 @@ jobs:
     # Step 9: Run unit tests with pytest
     # CRITICAL: Skip integration tests that require Ollama
     - name: Run unit tests with pytest
-      run: pytest tests/ -v --cov=src --cov-report=xml --cov-report=html -m "not integration" --tb=short
+      run: pytest tests/ -v --cov=src --cov-report=xml --cov-report=html -m "not integration"
       timeout-minutes: 30
       env:
-        GITHUB_ACTIONS: 'true'
-        PYTEST_RUNNING: 'true'
-        MOCK_OLLAMA: 'true'
+        MOCK_OLLAMA: "true"  # Signal tests to mock OllamaClient
     
     # Step 10: Upload coverage reports
     - name: Upload coverage to Codecov
