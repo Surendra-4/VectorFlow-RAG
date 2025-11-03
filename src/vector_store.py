@@ -43,12 +43,6 @@ class VectorStore:
         self.persist_directory = persist_directory
 
 
-        # Enforce tmp dir for CI environments (GitHub Actions)
-        if os.environ.get("GITHUB_ACTIONS") or not os.access(
-            self.persist_directory, os.W_OK
-        ):
-            self.persist_directory = tempfile.mkdtemp(prefix="chroma_")
-
         # Initialize ChromaDB client (using modern PersistentClient API)
         # CRITICAL: Pass string path, not Path object! ChromaDB concatenates with strings
         try:
