@@ -1,7 +1,6 @@
 """
 Unit tests for hybrid retriever
 """
-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -10,13 +9,14 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
 import pytest
 import numpy as np
+import tempfile
+import shutil
+import time
 from src.embedder import Embedder
 from src.vector_store import VectorStore
 from src.bm25_retriever import BM25Retriever
 from src.hybrid_retriever import HybridRetriever
-import shutil
-import os
-import time
+
 
 def safe_rmtree(path, retries=5):
     """Retry-safe delete to avoid Windows file lock errors"""
@@ -28,20 +28,17 @@ def safe_rmtree(path, retries=5):
             time.sleep(0.5)
 
 
-
 class TestHybridRetrieverInitialization:
     """Test HybridRetriever initialization"""
     
     @pytest.fixture
-    def components(self):
+    def components(self, temp_dir):
         """Create retriever components"""
         corpus = ["Test doc 1", "Test doc 2", "Test doc 3"]
         embedder = Embedder()
         
-        # Create vector store
-        test_dir = "indices\\test_hybrid_init"
-        if os.path.exists(test_dir):
-            safe_rmtree(test_dir)
+        # Create vector store using temp_dir
+        test_dir = str(temp_dir / "test_hybrid_init")
         
         vector_store = VectorStore(persist_directory=test_dir)
         vector_store.create_collection(reset=True)
@@ -52,8 +49,6 @@ class TestHybridRetrieverInitialization:
         bm25 = BM25Retriever(corpus=corpus)
         
         yield embedder, vector_store, bm25, test_dir
-        
-        safe_rmtree(test_dir)
     
     def test_initialization(self, components):
         """Test hybrid retriever initializes correctly"""
@@ -77,7 +72,7 @@ class TestHybridSearch:
     """Test hybrid search functionality"""
     
     @pytest.fixture
-    def hybrid_retriever(shared_embedder, tmp_path):
+    def hybrid_retriever(self, temp_dir):
         """Create test hybrid retriever"""
         corpus = [
             "Machine learning algorithms",
@@ -87,15 +82,13 @@ class TestHybridSearch:
             "Reinforcement learning agents",
         ]
         
+        test_dir = str(temp_dir / "test_hybrid_search")
         
-        test_dir = tmp_path/"test_hybrid_search"
-
-        vector_store = VectorStore(persist_directory=str(test_dir))
+        vector_store = VectorStore(persist_directory=test_dir)
         vector_store.create_collection(reset=True)
         
-        from src.embedder import Embedder
         embedder = Embedder(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
+        
         embeddings = embedder.encode(corpus, show_progress=False)
         vector_store.add_documents(texts=corpus, embeddings=embeddings.tolist())
         
@@ -103,7 +96,7 @@ class TestHybridSearch:
         
         retriever = HybridRetriever(embedder, vector_store, bm25, alpha=0.5)
         
-        yield retriever, str(test_dir)
+        yield retriever, test_dir
     
     def test_search_returns_results(self, hybrid_retriever):
         """Test search returns results"""
@@ -150,25 +143,24 @@ class TestAlphaWeighting:
         
         embedder = Embedder()
         
-        test_dir = "indices\\test_alpha_zero"
-        if os.path.exists(test_dir):
+        test_dir = tempfile.mkdtemp(prefix="test_alpha_zero_")
+        
+        try:
+            vector_store = VectorStore(persist_directory=test_dir)
+            vector_store.create_collection(reset=True)
+            
+            embeddings = embedder.encode(corpus, show_progress=False)
+            vector_store.add_documents(texts=corpus, embeddings=embeddings.tolist())
+            
+            bm25 = BM25Retriever(corpus=corpus)
+            
+            hybrid_zero = HybridRetriever(embedder, vector_store, bm25, alpha=0.0)
+            results = hybrid_zero.search("machine", k=3)
+            
+            # Should prioritize exact keyword match
+            assert "machine" in results[0]["text"].lower()
+        finally:
             safe_rmtree(test_dir)
-        
-        vector_store = VectorStore(persist_directory=test_dir)
-        vector_store.create_collection(reset=True)
-        
-        embeddings = embedder.encode(corpus, show_progress=False)
-        vector_store.add_documents(texts=corpus, embeddings=embeddings.tolist())
-        
-        bm25 = BM25Retriever(corpus=corpus)
-        
-        hybrid_zero = HybridRetriever(embedder, vector_store, bm25, alpha=0.0)
-        results = hybrid_zero.search("machine", k=3)
-        
-        # Should prioritize exact keyword match
-        assert "machine" in results[0]["text"].lower()
-        
-        safe_rmtree(test_dir)
     
     def test_alpha_one_gives_vector_weight(self):
         """Test that alpha=1 emphasizes vector similarity"""
@@ -180,22 +172,21 @@ class TestAlphaWeighting:
         
         embedder = Embedder()
         
-        test_dir = "indices\\test_alpha_one"
-        if os.path.exists(test_dir):
+        test_dir = tempfile.mkdtemp(prefix="test_alpha_one_")
+        
+        try:
+            vector_store = VectorStore(persist_directory=test_dir)
+            vector_store.create_collection(reset=True)
+            
+            embeddings = embedder.encode(corpus, show_progress=False)
+            vector_store.add_documents(texts=corpus, embeddings=embeddings.tolist())
+            
+            bm25 = BM25Retriever(corpus=corpus)
+            
+            hybrid_one = HybridRetriever(embedder, vector_store, bm25, alpha=1.0)
+            results = hybrid_one.search("transportation", k=3)
+            
+            # Should find semantically related content
+            assert len(results) > 0
+        finally:
             safe_rmtree(test_dir)
-        
-        vector_store = VectorStore(persist_directory=test_dir)
-        vector_store.create_collection(reset=True)
-        
-        embeddings = embedder.encode(corpus, show_progress=False)
-        vector_store.add_documents(texts=corpus, embeddings=embeddings.tolist())
-        
-        bm25 = BM25Retriever(corpus=corpus)
-        
-        hybrid_one = HybridRetriever(embedder, vector_store, bm25, alpha=1.0)
-        results = hybrid_one.search("transportation", k=3)
-        
-        # Should find semantically related content
-        assert len(results) > 0
-        
-        safe_rmtree(test_dir)
