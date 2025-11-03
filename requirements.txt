@@ -4,18 +4,66 @@
 # Select "Desktop development with C++" workload
 # This will solve issues while downloading pytrec-eval
 
-sentence-transformers>=3.0.0
-chromadb>=0.5.3
-faiss-cpu>=1.8.0
-bm25s[full]>=0.2.0
-fastapi>=0.115.0
-uvicorn[standard]>=0.30.0
-requests>=2.32.0
-dagshub>=0.3.0
-mlflow>=2.16.0
-numpy>=1.26.0
-pandas>=2.2.0
-tqdm>=4.66.0
-pydantic>=2.9.0
-pytest>=8.3.0
-streamlit>=1.38.0
+# ============================================================================
+# VectorFlow-RAG Requirements
+# ============================================================================
+# NOTE: All versions are pinned to ensure reproducible builds across environments
+#       This prevents "works on my machine" CI/CD failures
+# ============================================================================
+
+# Core Dependencies
+sentence-transformers>=3.0.0      # Embedding models
+chromadb==0.5.3                   # Vector database (PINNED - do not change)
+faiss-cpu>=1.8.0                  # Vector similarity search
+bm25s[full]>=0.2.0                # BM25 lexical retrieval
+
+# Web Framework
+fastapi>=0.115.0                  # REST API framework
+uvicorn[standard]>=0.30.0         # ASGI server
+
+# Data & ML
+requests>=2.32.0                  # HTTP client
+numpy>=1.26.0                     # Numerical computing
+pandas>=2.2.0                     # Data manipulation
+tqdm>=4.66.0                      # Progress bars
+
+# Config & Type Safety
+pydantic>=2.9.0                   # Data validation
+dataclasses-json>=0.6.0           # JSON serialization
+
+# MLOps & Experiment Tracking
+mlflow>=2.16.0                    # Experiment tracking
+dagshub>=0.3.0                    # DagsHub integration
+
+# UI
+streamlit>=1.38.0                 # Web UI framework
+
+# ============================================================================
+# Dependency Conflict Fixes
+# ============================================================================
+# These version constraints resolve known compatibility issues
+# that would otherwise cause CI/CD failures
+
+# sentence-transformers depends on huggingface-hub
+# Ensure compatibility with newer transformers versions
+huggingface-hub>=0.24.0,<2.0      # huggingface hub client
+
+# ============================================================================
+# Development & Testing Dependencies (optional, for local development)
+# ============================================================================
+# Install with: pip install -e ".[dev]"
+# Or install individually as needed
+
+pytest>=8.3.0                     # Testing framework
+pytest-cov>=4.1.0                 # Coverage plugin
+pytest-xdist>=3.5.0               # Parallel test execution
+pytest-timeout>=2.2.0             # Test timeout handling
+
+# Code Quality Tools
+black>=24.0.0                     # Code formatter
+isort>=5.13.0                     # Import sorter
+flake8>=7.0.0                     # Linter
+mypy>=1.7.0                       # Type checker
+
+# Documentation
+pdoc3>=0.11.0                     # API documentation generator

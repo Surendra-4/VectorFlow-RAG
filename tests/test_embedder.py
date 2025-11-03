@@ -1,12 +1,6 @@
 """
 Unit tests for embedder module
 """
-
-import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-
 import sys
 import numpy as np
 import pytest
@@ -79,7 +73,6 @@ class TestEmbedder:
 class TestEmbedderPerformance:
     """Performance tests for embedder"""
 
-    # @pytest.mark.skipif(sys.platform.startswith("win"), reason="Torch threading unstable on Windows for speed test")
     def test_batch_encoding_speed(self):
         """Test batch encoding is reasonably fast"""
         embedder = Embedder(model_name="all-MiniLM-L6-v2")

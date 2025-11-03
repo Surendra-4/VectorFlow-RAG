@@ -1,10 +1,15 @@
 """
-Complete RAG pipeline integrating all components
-"""
+Complete RAG pipeline integrating all components.
 
+Provides end-to-end Retrieval-Augmented Generation system combining:
+- Text embedding with sentence-transformers
+- Hybrid retrieval (BM25 + vector search)
+- LLM-based text generation with Ollama
+"""
 import os
-import time
 import sys
+import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from src.bm25_retriever import BM25Retriever
@@ -18,22 +23,32 @@ sys.path.append(os.path.dirname(__file__))
 
 
 class RAGPipeline:
-    """End-to-end RAG system combining retrieval and generation"""
+    """End-to-end RAG system combining retrieval and generation."""
 
     def __init__(
         self,
-        index_dir: str = "indices\\rag_system",
+        index_dir: str = None,
         alpha: float = 0.5,
         llm_model: str = "tinyllama",
     ):
         """
-        Initialize RAG pipeline
+        Initialize RAG pipeline.
 
         Args:
-            index_dir: Directory for storing indices
+            index_dir: Directory for storing indices.
+                      If None, uses "indices/rag_system"
             alpha: Hybrid search weight (0=pure BM25, 1=pure vector, 0.5=balanced)
             llm_model: Ollama model name (tinyllama, llama3.2:1b, etc.)
         """
+        # Convert default path using pathlib for cross-platform compatibility
+        if index_dir is None:
+            index_dir = str(Path("indices") / "rag_system")
+        else:
+            index_dir = str(Path(index_dir))
+
+        # Store index_dir as instance variable for later use
+        self.index_dir = index_dir
+
         print("=" * 70)
         print("Initializing VectorFlow-RAG Pipeline")
         print("=" * 70)
@@ -46,7 +61,8 @@ class RAGPipeline:
         self.chunker = TextChunker(chunk_size=500, overlap=50)
 
         print("[3/5] Setting up vector store...")
-        self.vector_store = VectorStore(persist_directory=f"{index_dir}\\chroma")
+        chroma_path = str(Path(index_dir) / "chroma")
+        self.vector_store = VectorStore(persist_directory=chroma_path)
 
         print("[4/5] Connecting to Ollama LLM...")
         self.llm = OllamaClient(model=llm_model)
@@ -70,7 +86,7 @@ class RAGPipeline:
         reset: bool = True,
     ):
         """
-        Ingest and index documents into the RAG system
+        Ingest and index documents into the RAG system.
 
         Args:
             documents: List of text documents to index
@@ -85,7 +101,11 @@ class RAGPipeline:
         print("[Step 1/4] Chunking documents...")
         all_chunks = []
         for i, doc in enumerate(documents):
-            metadata = metadatas[i] if metadatas else {"doc_id": i, "source": f"document_{i}"}
+            metadata = (
+                metadatas[i]
+                if metadatas
+                else {"doc_id": i, "source": f"document_{i}"}
+            )
             chunks = self.chunker.chunk_text(doc, metadata=metadata)
             all_chunks.extend(chunks)
             print(f"  ✓ Document {i+1}: {len(chunks)} chunks created")
@@ -99,7 +119,9 @@ class RAGPipeline:
         # Step 2: Generate embeddings
         print("\n[Step 2/4] Generating embeddings...")
         embeddings = self.embedder.encode(chunk_texts, show_progress=True)
-        print(f"  ✓ Generated {embeddings.shape[0]} embeddings of dimension {embeddings.shape[1]}")
+        print(
+            f"  ✓ Generated {embeddings.shape[0]} embeddings of dimension {embeddings.shape[1]}"
+        )
 
         # Step 3: Index in vector store
         print("\n[Step 3/4] Building vector index...")
@@ -111,7 +133,9 @@ class RAGPipeline:
                 print(f"  (warning) could not delete collection: {e}")
 
         # Recreate a clean VectorStore and collection
-        self.vector_store = VectorStore(persist_directory=self.vector_store.persist_directory)
+        self.vector_store = VectorStore(
+            persist_directory=self.vector_store.persist_directory
+        )
 
         self.vector_store.add_documents(
             texts=chunk_texts,
@@ -146,7 +170,7 @@ class RAGPipeline:
 
     def search(self, query: str, k: int = 5) -> List[Dict]:
         """
-        Search for relevant documents (retrieval only, no generation)
+        Search for relevant documents (retrieval only, no generation).
 
         Args:
             query: Search query
@@ -156,7 +180,9 @@ class RAGPipeline:
             List of relevant documents with scores
         """
         if self.hybrid_retriever is None:
-            raise ValueError("❌ No documents ingested! Call ingest_documents() first.")
+            raise ValueError(
+                "❌ No documents ingested! Call ingest_documents() first."
+            )
 
         print(f"\n🔍 Searching for: '{query}'")
         results = self.hybrid_retriever.search(query, k=k)
@@ -171,7 +197,7 @@ class RAGPipeline:
         verbose: bool = True,
     ) -> Dict:
         """
-        RAG: Retrieve relevant documents and generate answer
+        RAG: Retrieve relevant documents and generate answer.
 
         Args:
             question: User question
@@ -239,7 +265,7 @@ class RAGPipeline:
         return response
 
     def get_stats(self) -> Dict:
-        """Get pipeline statistics"""
+        """Get pipeline statistics."""
         return {
             "documents_ingested": self.document_count,
             "chunks_indexed": len(self.corpus),
@@ -255,7 +281,7 @@ class RAGPipeline:
 
 
 def demo():
-    """Run a complete demo of VectorFlow-RAG"""
+    """Run a complete demo of VectorFlow-RAG."""
 
     print("\n" + "=" * 70)
     print(" VectorFlow-RAG DEMO ".center(70, "="))
@@ -305,9 +331,9 @@ def demo():
         ),
     ]
 
-    # Initialize pipeline
+    # Initialize pipeline with cross-platform path
     rag = RAGPipeline(
-        index_dir="indices\\demo_rag",
+        index_dir=str(Path("indices") / "demo_rag"),
         alpha=0.5,  # Balanced hybrid search
         llm_model="tinyllama",
     )
