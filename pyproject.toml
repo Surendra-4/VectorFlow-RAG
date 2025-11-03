@@ -22,7 +22,6 @@ extend-exclude = '''
 profile = "black"
 line_length = 127
 skip_gitignore = true
-multi_line_mode = "black"
 include_trailing_comma = true
 
 [tool.mypy]
