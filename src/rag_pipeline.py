@@ -6,6 +6,7 @@ Provides end-to-end Retrieval-Augmented Generation system combining:
 - Hybrid retrieval (BM25 + vector search)
 - LLM-based text generation with Ollama
 """
+
 import os
 import sys
 import time
@@ -101,11 +102,7 @@ class RAGPipeline:
         print("[Step 1/4] Chunking documents...")
         all_chunks = []
         for i, doc in enumerate(documents):
-            metadata = (
-                metadatas[i]
-                if metadatas
-                else {"doc_id": i, "source": f"document_{i}"}
-            )
+            metadata = metadatas[i] if metadatas else {"doc_id": i, "source": f"document_{i}"}
             chunks = self.chunker.chunk_text(doc, metadata=metadata)
             all_chunks.extend(chunks)
             print(f"  ✓ Document {i+1}: {len(chunks)} chunks created")
@@ -119,9 +116,7 @@ class RAGPipeline:
         # Step 2: Generate embeddings
         print("\n[Step 2/4] Generating embeddings...")
         embeddings = self.embedder.encode(chunk_texts, show_progress=True)
-        print(
-            f"  ✓ Generated {embeddings.shape[0]} embeddings of dimension {embeddings.shape[1]}"
-        )
+        print(f"  ✓ Generated {embeddings.shape[0]} embeddings of dimension {embeddings.shape[1]}")
 
         # Step 3: Index in vector store
         print("\n[Step 3/4] Building vector index...")
@@ -133,9 +128,7 @@ class RAGPipeline:
                 print(f"  (warning) could not delete collection: {e}")
 
         # Recreate a clean VectorStore and collection
-        self.vector_store = VectorStore(
-            persist_directory=self.vector_store.persist_directory
-        )
+        self.vector_store = VectorStore(persist_directory=self.vector_store.persist_directory)
 
         self.vector_store.add_documents(
             texts=chunk_texts,
@@ -180,9 +173,7 @@ class RAGPipeline:
             List of relevant documents with scores
         """
         if self.hybrid_retriever is None:
-            raise ValueError(
-                "❌ No documents ingested! Call ingest_documents() first."
-            )
+            raise ValueError("❌ No documents ingested! Call ingest_documents() first.")
 
         print(f"\n🔍 Searching for: '{query}'")
         results = self.hybrid_retriever.search(query, k=k)
@@ -236,9 +227,7 @@ class RAGPipeline:
             print("\n[2/2] Generating answer with LLM...")
 
         gen_start = time.time()
-        answer = self.llm.generate(
-            prompt=question, context=context_docs, max_tokens=512, temperature=0.7
-        )
+        answer = self.llm.generate(prompt=question, context=context_docs, max_tokens=512, temperature=0.7)
         generation_time = time.time() - gen_start
         total_time = time.time() - start_time
 

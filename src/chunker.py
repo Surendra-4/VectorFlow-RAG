@@ -12,17 +12,13 @@ class TextChunker:
         chunks, curr, cid = [], "", 0
         for s in sentences:
             if len(curr) + len(s) > self.chunk_size and curr:
-                chunks.append(
-                    {"text": curr.strip(), "metadata": metadata or {}, "chunk_id": cid}
-                )
-                curr = curr[-self.overlap:] + " " + s
+                chunks.append({"text": curr.strip(), "metadata": metadata or {}, "chunk_id": cid})
+                curr = curr[-self.overlap :] + " " + s
                 cid += 1
             else:
                 curr += " " + s
         if curr.strip():
-            chunks.append(
-                {"text": curr.strip(), "metadata": metadata or {}, "chunk_id": cid}
-            )
+            chunks.append({"text": curr.strip(), "metadata": metadata or {}, "chunk_id": cid})
         return chunks
 
 

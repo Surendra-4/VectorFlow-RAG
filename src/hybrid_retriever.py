@@ -18,7 +18,7 @@ class HybridRetriever:
         vec_emb = self.embedder.encode(query)[0]
 
         # Retrieve vector-based results
-        vector_results = self.vector_store.search(vec_emb, n_results = k)
+        vector_results = self.vector_store.search(vec_emb, n_results=k)
         docs = vector_results.get("documents", [])
         dists = vector_results.get("distances", [])
 

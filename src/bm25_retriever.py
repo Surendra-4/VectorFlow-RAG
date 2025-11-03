@@ -22,9 +22,7 @@ class BM25Retriever:
             idx = int(docs[0, i])
             score = float(scores[0, i])
             if score > 0:
-                results.append(
-                    {"text": self.corpus[idx], "score": score, "rank": i + 1}
-                )
+                results.append({"text": self.corpus[idx], "score": score, "rank": i + 1})
         return results
 
 

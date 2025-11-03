@@ -1,6 +1,7 @@
 """
 Vector Store module using ChromaDB for efficient vector storage and retrieval
 """
+
 from pathlib import Path
 import os
 import tempfile
@@ -12,7 +13,7 @@ from chromadb import PersistentClient
 class VectorStore:
     """
     Vector database for storing and retrieving document embeddings.
-    
+
     Uses ChromaDB with PersistentClient (Chroma >=0.5.3 API).
     Provides cross-platform support using pathlib.
     """
@@ -42,7 +43,6 @@ class VectorStore:
         Path(persist_directory).mkdir(parents=True, exist_ok=True)
         self.persist_directory = persist_directory
 
-
         # Initialize ChromaDB client (using modern PersistentClient API)
         # CRITICAL: Pass string path, not Path object! ChromaDB concatenates with strings
         try:
@@ -67,15 +67,11 @@ class VectorStore:
             ChromaDB collection object
         """
         try:
-            return self.client.get_or_create_collection(
-                name=name, metadata={"desc": "docs"}
-            )
+            return self.client.get_or_create_collection(name=name, metadata={"desc": "docs"})
         except Exception:
             # Fallback for older ChromaDB versions
             try:
-                return self.client.create_collection(
-                    name=name, metadata={"desc": "docs"}
-                )
+                return self.client.create_collection(name=name, metadata={"desc": "docs"})
             except Exception as e:
                 raise RuntimeError(f"Unable to create or retrieve collection '{name}': {e}")
 
@@ -132,9 +128,7 @@ class VectorStore:
         """
         # Convert embeddings to lists if they're numpy arrays
         try:
-            embeddings_list = [
-                e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings
-            ]
+            embeddings_list = [e.tolist() if hasattr(e, "tolist") else list(e) for e in embeddings]
         except Exception:
             embeddings_list = list(embeddings)
 
@@ -142,11 +136,7 @@ class VectorStore:
         ids = list(ids) if ids else [f"id_{i}" for i in range(len(texts))]
 
         # Generate metadata if not provided
-        metadatas = (
-            list(metadatas)
-            if metadatas is not None
-            else [{"source": "manual"} for _ in texts]
-        )
+        metadatas = list(metadatas) if metadatas is not None else [{"source": "manual"} for _ in texts]
 
         # Add to ChromaDB
         self.collection.add(
@@ -177,11 +167,7 @@ class VectorStore:
             return {"documents": [], "distances": [], "metadatas": []}
 
         # Convert query embedding to list if needed
-        q_emb = (
-            query_embedding.tolist()
-            if hasattr(query_embedding, "tolist")
-            else list(query_embedding)
-        )
+        q_emb = query_embedding.tolist() if hasattr(query_embedding, "tolist") else list(query_embedding)
         n_results = max(1, int(n_results))
 
         # Query ChromaDB

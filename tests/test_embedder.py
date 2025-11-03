@@ -1,6 +1,7 @@
 """
 Unit tests for embedder module
 """
+
 import sys
 import numpy as np
 import pytest
