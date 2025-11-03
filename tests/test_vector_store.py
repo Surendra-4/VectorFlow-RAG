@@ -5,9 +5,10 @@ Uses pathlib for cross-platform compatibility and temp_dir fixture
 for automatic cleanup.
 """
 
-import pytest
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pytest
 
 from src.vector_store import VectorStore
 

@@ -2,12 +2,14 @@
 Performance benchmarking tests
 """
 
-import pytest
 import time
+
 import numpy as np
-from src.embedder import Embedder
-from src.chunker import TextChunker
+import pytest
+
 from src.bm25_retriever import BM25Retriever
+from src.chunker import TextChunker
+from src.embedder import Embedder
 
 
 class TestEmbedderPerformance:
@@ -89,9 +91,10 @@ class TestEndToEndPerformance:
 
     def test_full_pipeline_latency(self):
         """Test complete pipeline latency"""
-        from src.rag_pipeline import RAGPipeline
-        import shutil
         import os
+        import shutil
+
+        from src.rag_pipeline import RAGPipeline
 
         test_dir = "indices\\test_perf_e2e"
         if os.path.exists(test_dir):

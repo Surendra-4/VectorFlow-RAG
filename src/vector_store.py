@@ -2,9 +2,9 @@
 Vector Store module using ChromaDB for efficient vector storage and retrieval
 """
 
-from pathlib import Path
 import os
 import tempfile
+from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 from chromadb import PersistentClient

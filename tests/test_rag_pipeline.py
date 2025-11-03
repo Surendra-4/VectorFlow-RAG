@@ -5,8 +5,9 @@ Tests are marked with @pytest.mark.integration and will be skipped in CI
 unless Ollama is available.
 """
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from src.rag_pipeline import RAGPipeline
 

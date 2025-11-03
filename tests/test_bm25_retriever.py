@@ -3,6 +3,7 @@ Unit tests for BM25 retriever
 """
 
 import pytest
+
 from src.bm25_retriever import BM25Retriever
 
 

@@ -9,15 +9,17 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
 
-import pytest
-import numpy as np
-import tempfile
 import shutil
+import tempfile
 import time
-from src.embedder import Embedder
-from src.vector_store import VectorStore
+
+import numpy as np
+import pytest
+
 from src.bm25_retriever import BM25Retriever
+from src.embedder import Embedder
 from src.hybrid_retriever import HybridRetriever
+from src.vector_store import VectorStore
 
 
 def safe_rmtree(path, retries=5):
