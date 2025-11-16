@@ -1,4 +1,4 @@
-# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\src\embedder.py
+# src/embedder.py
 
 from sentence_transformers import SentenceTransformer
 

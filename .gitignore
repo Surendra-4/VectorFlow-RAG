@@ -1,8 +1,20 @@
+# Gitignore for Python projects
+
 # Virtual Environment
 .venv/
 venv/
 ENV/
 env/
+.env
+.venv/**/site-packages/
+.pytest_cache/
+pycache/
+*.pyc
+*.pyd
+*.whl
+*.egg-info
+*.dist-info
+.DS_Store
 
 # Python
 __pycache__/
@@ -71,3 +83,26 @@ config.toml
 *.pickle
 
 .streamlit/secrets.toml
+
+
+# To be safe
+
+# local venv
+.venv/
+# pytest cache and python bytecode
+.pytest_cache/
+__pycache__/
+*.pyc
+# compiled extensions / wheels
+*.pyd
+*.whl
+*.egg-info/
+*.dist-info/
+dist/
+build/
+# Streamlit secrets
+.streamlit/secrets.toml
+# OS files
+.DS_Store
+# env files
+.env

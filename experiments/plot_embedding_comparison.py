@@ -1,3 +1,5 @@
+# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\experiments\plot_embedding_comparison.py
+
 """
 Plot and compare embedding model results across multiple experiments
 """

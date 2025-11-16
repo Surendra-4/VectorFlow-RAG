@@ -1,3 +1,5 @@
+# src/vector_store.py
+
 """
 Vector Store module using ChromaDB for efficient vector storage and retrieval
 """

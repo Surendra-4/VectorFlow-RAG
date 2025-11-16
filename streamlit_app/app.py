@@ -1,3 +1,5 @@
+# streamlit_app/app.py
+
 """
 VectorFlow-RAG Interactive Demo
 Streamlit web interface for semantic search and RAG

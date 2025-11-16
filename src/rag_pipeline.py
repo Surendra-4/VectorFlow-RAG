@@ -1,3 +1,5 @@
+# src/rag_pipeline.py
+
 """
 Complete RAG pipeline integrating all components.
 

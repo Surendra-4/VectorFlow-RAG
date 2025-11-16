@@ -1,3 +1,5 @@
+# tests/conftest.py
+
 """
 Pytest configuration and fixtures for VectorFlow-RAG tests.
 

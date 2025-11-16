@@ -1,3 +1,5 @@
+# tests/test_performance.py
+
 """
 Performance benchmarking tests
 """

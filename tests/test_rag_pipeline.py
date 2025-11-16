@@ -1,3 +1,5 @@
+# tests/test_rag_pipeline.py
+
 """
 Integration tests for RAG pipeline
 

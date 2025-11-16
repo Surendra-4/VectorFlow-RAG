@@ -1,3 +1,5 @@
+# tests/test_embedder.py
+
 """
 Unit tests for embedder module
 """

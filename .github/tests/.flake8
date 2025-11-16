@@ -1,3 +1,6 @@
+# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\.github\tests\.flake8
+# Flake8 configuration file for code style enforcement
+
 [flake8]
 max-line-length = 127
 exclude = 

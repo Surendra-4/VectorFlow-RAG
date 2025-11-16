@@ -1,5 +1,4 @@
-# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\src\hybrid_retriever.py
-
+# src/hybrid_retriever.py
 from src.bm25_retriever import BM25Retriever
 from src.embedder import Embedder
 from src.vector_store import VectorStore

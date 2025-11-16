@@ -1,4 +1,4 @@
-# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\src\bm25_retriever.py
+# src/bm25_retriever.py
 
 from typing import List
 

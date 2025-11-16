@@ -1,3 +1,5 @@
+# tests/test_integration.py
+
 """
 Integration tests for full pipeline
 """

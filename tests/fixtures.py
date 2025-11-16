@@ -1,3 +1,5 @@
+# tests/fixtures.py
+
 """
 Shared fixtures for tests
 """

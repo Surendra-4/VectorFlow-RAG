@@ -1,3 +1,5 @@
+# tests/test_vector_store.py
+
 """
 Unit tests for vector_store module
 

@@ -1,4 +1,4 @@
-# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\src\chunker.py
+# src/chunker.py
 
 import re
 
