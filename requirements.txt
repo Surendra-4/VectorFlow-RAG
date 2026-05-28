@@ -21,22 +21,38 @@ bm25s[full]>=0.2.0                # BM25 lexical retrieval
 fastapi>=0.115.0                  # REST API framework
 uvicorn[standard]>=0.30.0         # ASGI server
 
+# Document Loaders (Phase 4)
+pypdf>=4.0.0                      # PDF text extraction
+python-docx>=1.1.0                # DOCX parsing
+openpyxl>=3.1.0                   # XLSX parsing
+pytesseract>=0.3.10               # Tesseract OCR Python binding (needs tesseract binary)
+Pillow>=10.0.0                    # Image handling for OCR
+
+# Cache (Phase 6) — Redis backend is optional; in-memory cache works without it
+redis>=5.0                        # Redis client (only imported when backend=redis)
+
 # Data & ML
 requests>=2.32.0                  # HTTP client
 numpy>=1.26.0                     # Numerical computing
-pandas>=2.2.0                     # Data manipulation
 tqdm>=4.66.0                      # Progress bars
 
 # Config & Type Safety
 pydantic>=2.9.0                   # Data validation
-dataclasses-json>=0.6.0           # JSON serialization
-
-# MLOps & Experiment Tracking
-mlflow>=2.16.0                    # Experiment tracking
-dagshub>=0.3.0                    # DagsHub integration
+pydantic-settings>=2.0.0          # Env-driven settings (Settings.model_config)
+python-dotenv>=1.0.0              # .env file support for pydantic-settings
 
 # UI
-streamlit>=1.38.0                 # Web UI framework
+streamlit>=1.38.0                 # Web UI framework (legacy demo app; React frontend is in frontend/)
+
+# ----------------------------------------------------------------------------
+# Optional / not imported by the current codebase (kept for documented intent).
+# Verified unused repo-wide as of the Phase 11 cleanup pass; uncomment only if
+# you wire up MLOps experiment tracking or pandas/dataclasses-json workflows.
+# ----------------------------------------------------------------------------
+# pandas>=2.2.0                   # Data manipulation (unused in src/, experiments/, tests/)
+# dataclasses-json>=0.6.0         # JSON serialization (we use stdlib dataclasses + dict)
+# mlflow>=2.16.0                  # Experiment tracking (not wired up)
+# dagshub>=0.3.0                  # DagsHub integration (not wired up)
 
 # ============================================================================
 # Dependency Conflict Fixes
