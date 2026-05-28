@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "timestamp": "20260528T060637Z",
+  "k": 5,
+  "profiles": [
+    {
+      "profile": "english",
+      "embedder_model": "all-MiniLM-L6-v2",
+      "k": 5,
+      "ingest_ms": 451.1,
+      "query_latency_p50_ms": 34.34,
+      "english_subset_recall_at_k": 1.0,
+      "query_sets": {
+        "monolingual": {
+          "recall_at_k": 1.0,
+          "mrr": 0.8889,
+          "n_queries": 9,
+          "per_language_recall": {
+            "en": 1.0,
+            "fr": 1.0,
+            "de": 1.0,
+            "es": 1.0,
+            "zh": 1.0,
+            "ar": 1.0,
+            "ru": 1.0
+          }
+        },
+        "cross_lingual": {
+          "recall_at_k": 1.0,
+          "mrr": 1.0,
+          "n_queries": 3,
+          "per_language_recall": {
+            "en": 1.0,
+            "fr": 1.0,
+            "zh": 1.0
+          }
+        },
+        "code_switch": {
+          "recall_at_k": 1.0,
+          "mrr": 1.0,
+          "n_queries": 1,
+          "per_language_recall": {
+            "mix": 1.0
+          }
+        }
+      }
+    },
+    {
+      "profile": "multilingual",
+      "embedder_model": "intfloat/multilingual-e5-small",
+      "k": 5,
+      "ingest_ms": 638.6,
+      "query_latency_p50_ms": 20.95,
+      "english_subset_recall_at_k": 1.0,
+      "query_sets": {
+        "monolingual": {
+          "recall_at_k": 1.0,
+          "mrr": 1.0,
+          "n_queries": 9,
+          "per_language_recall": {
+            "en": 1.0,
+            "fr": 1.0,
+            "de": 1.0,
+            "es": 1.0,
+            "zh": 1.0,
+            "ar": 1.0,
+            "ru": 1.0
+          }
+        },
+        "cross_lingual": {
+          "recall_at_k": 1.0,
+          "mrr": 1.0,
+          "n_queries": 3,
+          "per_language_recall": {
+            "en": 1.0,
+            "fr": 1.0,
+            "zh": 1.0
+          }
+        },
+        "code_switch": {
+          "recall_at_k": 1.0,
+          "mrr": 1.0,
+          "n_queries": 1,
+          "per_language_recall": {
+            "mix": 1.0
+          }
+        }
+      }
+    }
+  ]
+}
