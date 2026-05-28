@@ -4,6 +4,7 @@ Streamlit web interface for semantic search and RAG
 """
 import streamlit as st
 import sys, os
+from pathlib import Path
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -377,7 +378,7 @@ with tab1:
             with st.spinner("Processing documents..."):
                 try:
                     rag = RAGPipeline(
-                        index_dir="indices\\streamlit_rag",
+                        index_dir=str(Path("indices") / "streamlit_rag"),
                         alpha=alpha,
                         llm_model=llm_model
                     )
