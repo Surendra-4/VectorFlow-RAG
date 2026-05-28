@@ -9,7 +9,31 @@ import sys
 import numpy as np
 import pytest
 
-from src.embedder import Embedder
+from src.embedder import Embedder, _auto_prefixes
+
+
+class TestAutoPrefixes:
+    """Phase 11: E5-family prefix auto-detection (pure function, no model load)."""
+
+    def test_e5_models_get_query_passage_prefixes(self):
+        for name in (
+            "intfloat/multilingual-e5-small",
+            "intfloat/multilingual-e5-base",
+            "intfloat/e5-large-v2",
+        ):
+            q, p = _auto_prefixes(name)
+            assert q == "query: "
+            assert p == "passage: "
+
+    def test_symmetric_models_get_empty_prefixes(self):
+        for name in (
+            "all-MiniLM-L6-v2",
+            "BAAI/bge-m3",
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        ):
+            q, p = _auto_prefixes(name)
+            assert q == ""
+            assert p == ""
 
 
 class TestEmbedder:
