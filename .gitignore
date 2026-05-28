@@ -106,3 +106,5 @@ build/
 .DS_Store
 # env files
 .env
+# Claude Code worktree metadata
+.claude/
