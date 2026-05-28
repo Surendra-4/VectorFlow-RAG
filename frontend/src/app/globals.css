@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens — light mode defaults */
+:root {
+  --bg: 250 251 252;            /* #fafbfc */
+  --surface: 255 255 255;       /* #ffffff */
+  --surface-raised: 248 250 252;
+  --border: 226 232 240;
+  --fg: 15 23 42;
+  --fg-muted: 71 85 105;
+  --accent: 37 99 235;
+  --accent-fg: 255 255 255;
+  --success: 16 185 129;
+  --warning: 245 158 11;
+  --danger: 220 38 38;
+}
+
+/* Dark-mode overrides */
+.dark {
+  --bg: 15 23 42;               /* slate-900 */
+  --surface: 30 41 59;          /* slate-800 */
+  --surface-raised: 51 65 85;   /* slate-700 */
+  --border: 71 85 105;          /* slate-600 */
+  --fg: 248 250 252;            /* slate-50 */
+  --fg-muted: 148 163 184;
+  --accent: 96 165 250;
+  --accent-fg: 15 23 42;
+  --success: 52 211 153;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+}
+
+html,
+body {
+  background-color: rgb(var(--bg));
+  color: rgb(var(--fg));
+}
+
+/* Disable transitions during theme switches to avoid color-bleed flashes. */
+.no-transition,
+.no-transition * {
+  transition: none !important;
+}
+
+/* Accessible focus ring for keyboard users; tailwind's default ring works
+   but this guarantees consistent color across components. */
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}

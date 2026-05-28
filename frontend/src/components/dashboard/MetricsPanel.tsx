@@ -1,0 +1,106 @@
+"use client";
+
+import { Card, CardTitle } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { ErrorBox } from "@/components/ui/ErrorBox";
+import { metricsApi } from "@/lib/api";
+import { usePolling } from "@/lib/hooks/usePolling";
+import { formatLatencyMs, formatNumber, formatPercent, formatUptime } from "@/lib/utils/format";
+
+function statRow(label: string, value: React.ReactNode) {
+  return (
+    <div className="flex items-baseline justify-between border-b border-border py-2 last:border-b-0">
+      <span className="text-xs text-fg-muted">{label}</span>
+      <span className="text-sm font-medium">{value}</span>
+    </div>
+  );
+}
+
+export function MetricsPanel() {
+  const { data, error } = usePolling(metricsApi.getMetricsSnapshot, 5000);
+
+  if (error) return <ErrorBox error={error} />;
+  if (!data) {
+    return <p className="text-sm text-fg-muted">Loading metrics…</p>;
+  }
+
+  const retrievalHist = data.histograms?.retrieval_latency_ms;
+  const ingestHist = data.histograms?.ingest_latency_ms;
+  const streamHist = data.histograms?.stream_duration_ms;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <Card>
+        <CardTitle>Throughput</CardTitle>
+        {statRow("Retrievals", formatNumber(data.counters?.retrievals_total))}
+        {statRow("Reranker used", formatNumber(data.counters?.reranker_used_total))}
+        {statRow("Cache hits", formatNumber(data.counters?.cache_hits_total))}
+        {statRow("Chunks ingested", formatNumber(data.counters?.chunks_ingested_total))}
+        {statRow("Ingest failures", formatNumber(data.counters?.ingest_failures_total))}
+      </Card>
+
+      <Card>
+        <CardTitle>Retrieval latency</CardTitle>
+        {statRow("p50", formatLatencyMs(retrievalHist?.p50))}
+        {statRow("p95", formatLatencyMs(retrievalHist?.p95))}
+        {statRow("p99", formatLatencyMs(retrievalHist?.p99))}
+        {statRow("count", formatNumber(retrievalHist?.count))}
+      </Card>
+
+      <Card>
+        <CardTitle>Ingest latency</CardTitle>
+        {statRow("p50", formatLatencyMs(ingestHist?.p50))}
+        {statRow("p95", formatLatencyMs(ingestHist?.p95))}
+        {statRow("count", formatNumber(ingestHist?.count))}
+      </Card>
+
+      <Card>
+        <CardTitle>Streams</CardTitle>
+        {statRow("Active", formatNumber(data.gauges?.active_streams))}
+        {statRow("Sessions total", formatNumber(data.counters?.stream_sessions_total))}
+        {statRow("Avg duration", formatLatencyMs(streamHist?.mean))}
+      </Card>
+
+      <Card className="md:col-span-2">
+        <CardTitle>Requests by endpoint</CardTitle>
+        <table className="w-full text-left text-xs">
+          <thead className="text-fg-muted">
+            <tr>
+              <th className="py-1 font-normal">Endpoint</th>
+              <th className="py-1 font-normal">Status</th>
+              <th className="py-1 text-right font-normal">Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data.labeled_counters?.requests_total ?? []).slice(0, 20).map((row, i) => (
+              <tr key={i} className="border-t border-border">
+                <td className="py-1 font-mono">{String(row.endpoint)}</td>
+                <td className="py-1">
+                  <Badge tone={Number(row.status_code) >= 400 ? "danger" : "neutral"}>
+                    {String(row.status_code)}
+                  </Badge>
+                </td>
+                <td className="py-1 text-right">{formatNumber(row.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card className="md:col-span-2">
+        <CardTitle>System</CardTitle>
+        {statRow("Uptime", formatUptime(data.uptime_s))}
+        {statRow(
+          "Hit ratio",
+          formatPercent(
+            data.counters?.cache_hits_total != null && data.counters?.retrievals_total
+              ? data.counters.cache_hits_total / data.counters.retrievals_total
+              : null
+          )
+        )}
+        {statRow("Recent traces buffer", formatNumber(data.ring_buffer_sizes?.recent_traces))}
+        {statRow("Recent errors buffer", formatNumber(data.ring_buffer_sizes?.recent_errors))}
+      </Card>
+    </div>
+  );
+}
