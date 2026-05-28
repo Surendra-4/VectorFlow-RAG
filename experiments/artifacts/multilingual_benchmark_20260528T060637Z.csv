@@ -1,0 +1,7 @@
+profile,embedder_model,k,query_set,recall_at_k,mrr,english_recall_at_k
+english,all-MiniLM-L6-v2,5,monolingual,1.0,0.8889,1.0
+english,all-MiniLM-L6-v2,5,cross_lingual,1.0,1.0,1.0
+english,all-MiniLM-L6-v2,5,code_switch,1.0,1.0,1.0
+multilingual,intfloat/multilingual-e5-small,5,monolingual,1.0,1.0,1.0
+multilingual,intfloat/multilingual-e5-small,5,cross_lingual,1.0,1.0,1.0
+multilingual,intfloat/multilingual-e5-small,5,code_switch,1.0,1.0,1.0
