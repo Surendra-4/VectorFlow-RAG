@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from chromadb import PersistentClient
+from chromadb.config import Settings as ChromaSettings
 
 from src.config import get_settings
 from src.interfaces import VectorStoreProtocol
@@ -44,7 +45,13 @@ class VectorStore:
         Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
 
         try:
-            self.client = PersistentClient(path=self.persist_directory)
+            # anonymized_telemetry=False silences ChromaDB's posthog telemetry,
+            # which both leaks usage data and (on some posthog/chromadb version
+            # combos) spams "capture() takes 1 positional argument" ERROR logs.
+            self.client = PersistentClient(
+                path=self.persist_directory,
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
         except Exception as exc:
             raise RuntimeError(f"Could not initialize chromadb client: {exc}") from exc
 
