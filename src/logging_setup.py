@@ -141,7 +141,29 @@ def configure_logging(
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
 
+    quiet_noisy_loggers()
     _CONFIGURED = True
+
+
+# Third-party loggers that emit high-volume INFO chatter unrelated to this
+# application's behavior. We raise their threshold to WARNING so genuine
+# problems still surface, but startup/operation stays readable.
+_NOISY_LOGGERS = {
+    "httpx": logging.WARNING,                 # one INFO line per HF Hub HEAD request
+    "httpcore": logging.WARNING,
+    "jax._src.xla_bridge": logging.ERROR,     # "Unable to initialize backend 'tpu'" probe
+    "jax": logging.WARNING,
+    "chromadb.telemetry": logging.CRITICAL,   # posthog version-mismatch ERROR spam
+    "chromadb.telemetry.product.posthog": logging.CRITICAL,
+    "sentence_transformers": logging.WARNING,
+    "urllib3": logging.WARNING,
+}
+
+
+def quiet_noisy_loggers() -> None:
+    """Raise the level of known-chatty third-party loggers (idempotent)."""
+    for name, lvl in _NOISY_LOGGERS.items():
+        logging.getLogger(name).setLevel(lvl)
 
 
 def configure_from_settings(settings) -> None:
