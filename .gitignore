@@ -22,18 +22,21 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+# NOTE: these Python packaging build dirs are anchored to the repo root with a
+# leading slash. Without the anchor, bare `lib/`/`build/`/`dist/` also match
+# nested non-Python dirs like `frontend/src/lib/`, silently un-tracking them.
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -98,8 +101,8 @@ __pycache__/
 *.whl
 *.egg-info/
 *.dist-info/
-dist/
-build/
+/dist/
+/build/
 # Streamlit secrets
 .streamlit/secrets.toml
 # OS files
