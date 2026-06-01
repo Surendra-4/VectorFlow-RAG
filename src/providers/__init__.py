@@ -43,7 +43,10 @@ from src.providers.secrets import (
 )
 
 # Import provider modules for their import-time self-registration side effects.
-from src.providers import ollama  # noqa: E402,F401  (registers "ollama")
+from src.providers import ollama          # noqa: E402,F401  ("ollama")
+from src.providers import openai_compat   # noqa: E402,F401  ("openai", "groq", "openrouter")
+from src.providers import anthropic       # noqa: E402,F401  ("anthropic")
+from src.providers import gemini          # noqa: E402,F401  ("gemini")
 
 __all__ = [
     "ChatModelConfig",
