@@ -24,7 +24,7 @@ from src.providers.base import (
     ChatModelConfig,
     ModelProvider,
     ProviderCapabilities,
-    ProviderError,
+    UnknownProviderError,
 )
 
 if TYPE_CHECKING:
@@ -47,14 +47,14 @@ def is_registered(name: str) -> bool:
 def get_provider_class(name: str) -> Type[ModelProvider]:
     entry = _PROVIDERS.get(name)
     if entry is None:
-        raise ProviderError(f"Unknown provider: {name!r}", provider=name)
+        raise UnknownProviderError(f"Unknown provider: {name!r}", provider=name)
     return entry[0]
 
 
 def get_provider_capabilities(name: str) -> ProviderCapabilities:
     entry = _PROVIDERS.get(name)
     if entry is None:
-        raise ProviderError(f"Unknown provider: {name!r}", provider=name)
+        raise UnknownProviderError(f"Unknown provider: {name!r}", provider=name)
     return entry[1]
 
 

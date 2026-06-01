@@ -219,3 +219,175 @@ class IndexResetResponse(BaseModel):
     cleared: bool
     previous_chunks: int
     request_id: str
+
+
+# --------------------------------------------------------------------------- #
+# Model management (Phase 12d)
+# --------------------------------------------------------------------------- #
+
+
+class ProviderModelSchema(BaseModel):
+    """Frontend-facing model metadata (mirrors providers.ProviderModel)."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    id: str
+    kind: str = "chat"
+    label: Optional[str] = None
+    context_window: Optional[int] = None
+    supports_streaming: bool = True
+    supports_tools: bool = False
+    multilingual: bool = False
+    installed: Optional[bool] = None
+    size_bytes: Optional[int] = None
+    parameter_size: Optional[str] = None
+    quantization: Optional[str] = None
+    ram_estimate_bytes: Optional[int] = None
+    pricing: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+
+
+class ProviderCapabilitiesSchema(BaseModel):
+    """Frontend-facing provider capabilities (mirrors ProviderCapabilities)."""
+
+    name: str
+    label: str
+    location: str
+    requires_api_key: bool
+    supports_chat: bool = True
+    supports_streaming: bool = True
+    supports_model_listing: bool = True
+    supports_install: bool = False
+    supports_embeddings: bool = False
+    base_url_configurable: bool = False
+    default_base_url: Optional[str] = None
+    docs_url: Optional[str] = None
+    notes: str = ""
+    # Whether this provider currently has an API key configured (online only).
+    key_configured: bool = False
+    key_hint: Optional[str] = None
+
+
+class ProvidersResponse(BaseModel):
+    providers: List[ProviderCapabilitiesSchema]
+    request_id: str
+
+
+class ModelListResponse(BaseModel):
+    provider: str
+    models: List[ProviderModelSchema]
+    request_id: str
+
+
+class InstallRequest(BaseModel):
+    name: str = Field(..., min_length=1, description="Model id to pull, e.g. 'llama3.2:1b'.")
+    provider: str = Field(default="ollama", description="Offline provider to install into.")
+
+
+class DeleteModelResponse(BaseModel):
+    provider: str
+    name: str
+    deleted: bool
+    request_id: str
+
+
+class SetApiKeyRequest(BaseModel):
+    api_key: str = Field(..., min_length=1, description="Stored backend-side only; never returned.")
+
+
+class ApiKeyStatusResponse(BaseModel):
+    provider: str
+    configured: bool
+    hint: Optional[str] = None
+    request_id: str
+
+
+class ConnectionValidationResponse(BaseModel):
+    provider: str
+    ok: bool
+    message: str = ""
+    models_available: Optional[int] = None
+    latency_ms: Optional[float] = None
+    request_id: str
+
+
+class ChatModelConfigSchema(BaseModel):
+    """Selection of a chat model. No api_key field — keys live backend-side."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    provider: str = "ollama"
+    model: str = "tinyllama"
+    base_url: Optional[str] = None
+    max_tokens: int = Field(default=512, ge=1, le=32768)
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    request_timeout_s: int = Field(default=120, ge=1, le=3600)
+
+
+class SelectModelRequest(BaseModel):
+    """Switch the active chat model at runtime."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    provider: str = Field(..., description="Provider name, e.g. 'ollama' or 'openai'.")
+    model: str = Field(..., min_length=1, description="Model id within that provider.")
+    base_url: Optional[str] = None
+    max_tokens: Optional[int] = Field(default=None, ge=1, le=32768)
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    request_timeout_s: Optional[int] = Field(default=None, ge=1, le=3600)
+
+
+class ActiveModelResponse(BaseModel):
+    """The chat model the pipeline is currently using."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    provider: str
+    model: str
+    base_url: Optional[str] = None
+    location: Optional[str] = None  # offline/online (from capabilities)
+    request_id: str
+
+
+# --------------------------------------------------------------------------- #
+# Runtime configuration (Phase 12c/d)
+# --------------------------------------------------------------------------- #
+
+
+class RuntimeConfigResponse(BaseModel):
+    """Full runtime-config snapshot (live + staged index + active index)."""
+
+    version: int
+    live: Dict[str, Any]
+    staged_index: Dict[str, Any]
+    active_index: Dict[str, Any]
+    request_id: str
+
+
+class LiveSettingsPatch(BaseModel):
+    """Partial update to live-query settings. Any subset of fields.
+
+    Sent through as a plain dict patch to RuntimeConfigStore.update_live so
+    the validation lives in exactly one place (the store).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+
+class IndexSettingsPatch(BaseModel):
+    """Partial update to STAGED index-construction settings. Never rebuilds."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class LiveSettingsResponse(BaseModel):
+    live: Dict[str, Any]
+    request_id: str
+
+
+class StagedIndexResponse(BaseModel):
+    staged_index: Dict[str, Any]
+    # True when staged differs from active — i.e. a rebuild is needed for the
+    # staged changes to take effect.
+    rebuild_required: bool
+    request_id: str

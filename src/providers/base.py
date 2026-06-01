@@ -74,6 +74,13 @@ class ModelNotFoundError(ProviderError):
         super().__init__(message, provider=provider, retriable=False)
 
 
+class UnknownProviderError(ProviderError):
+    """The named provider is not registered. Maps to 404 at the API layer."""
+
+    def __init__(self, message: str, *, provider: Optional[str] = None):
+        super().__init__(message, provider=provider, retriable=False)
+
+
 # --------------------------------------------------------------------------- #
 # Enums
 # --------------------------------------------------------------------------- #

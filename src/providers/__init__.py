@@ -27,6 +27,7 @@ from src.providers.base import (
     ProviderModel,
     ProviderUnavailableError,
     RerankerModelConfig,
+    UnknownProviderError,
 )
 from src.providers.registry import (
     get_provider_capabilities,
@@ -62,6 +63,7 @@ __all__ = [
     "ProviderModel",
     "ProviderUnavailableError",
     "RerankerModelConfig",
+    "UnknownProviderError",
     "SecretStore",
     "get_provider_capabilities",
     "get_secret_store",
