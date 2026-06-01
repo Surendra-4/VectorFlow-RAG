@@ -145,9 +145,11 @@ def create_app(
         admin,
         ask,
         cache,
+        config as config_routes,
         documents,
         health,
         ingest,
+        models,
         observability,
         search,
         status,
@@ -162,6 +164,8 @@ def create_app(
     app.include_router(documents.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
     app.include_router(observability.router, prefix="/api/v1")
+    app.include_router(models.router, prefix="/api/v1")
+    app.include_router(config_routes.router, prefix="/api/v1")
 
     return app
 

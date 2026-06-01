@@ -108,11 +108,50 @@ def register_error_handlers(app) -> None:
 
     @app.exception_handler(ValueError)
     async def _value_handler(request: Request, exc: ValueError):
+        # RuntimeConfigError subclasses ValueError and carries a `field`.
+        details = None
+        field = getattr(exc, "field", None)
+        if field:
+            details = {"field": field}
         return _error(
             request,
             status_code=400,
             code="bad_request",
             message=str(exc),
+            details=details,
+        )
+
+    # Provider-layer failures (Phase 12) → clean structured errors instead of
+    # a generic 500. Auth is the user's fault (401); unavailability is
+    # transient (503); unknown model is 404; anything else is an upstream
+    # gateway failure (502).
+    from src.providers.base import (
+        ModelNotFoundError,
+        ProviderAuthError,
+        ProviderError,
+        ProviderUnavailableError,
+        UnknownProviderError,
+    )
+
+    @app.exception_handler(ProviderError)
+    async def _provider_handler(request: Request, exc: ProviderError):
+        if isinstance(exc, ProviderAuthError):
+            status_code, code = 401, "provider_auth_error"
+        elif isinstance(exc, UnknownProviderError):
+            status_code, code = 404, "provider_not_found"
+        elif isinstance(exc, ModelNotFoundError):
+            status_code, code = 404, "model_not_found"
+        elif isinstance(exc, ProviderUnavailableError) or exc.retriable:
+            # Retriable base errors (e.g. Ollama list failure) are transient.
+            status_code, code = 503, "provider_unavailable"
+        else:
+            status_code, code = 502, "provider_error"
+        return _error(
+            request,
+            status_code=status_code,
+            code=code,
+            message=exc.message,
+            details={"provider": exc.provider, "retriable": exc.retriable},
         )
 
     @app.exception_handler(Exception)

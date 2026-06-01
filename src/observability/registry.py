@@ -108,6 +108,21 @@ class MetricsRegistry:
             "ingest_failures_total", "Per-file ingest failures (not whole-batch)"
         )
 
+        # Model management (Phase 12). Bounded cardinality: provider names are
+        # from a fixed registry; op/status/kind are fixed enums.
+        self.provider_ops_total = LabeledCounter(
+            "provider_ops_total", ("provider", "op"),
+            "Provider operations (list/validate/set_key/delete) by provider",
+        )
+        self.model_installs_total = LabeledCounter(
+            "model_installs_total", ("provider", "status"),
+            "Offline model install attempts by provider and outcome",
+        )
+        self.model_switch_total = LabeledCounter(
+            "model_switch_total", ("provider", "kind"),
+            "Active-model switch events by provider and model kind",
+        )
+
         # Streaming
         self.active_streams = Gauge("active_streams", "Currently-open SSE streams")
         self.stream_sessions_total = Counter(
@@ -163,6 +178,15 @@ class MetricsRegistry:
                 ),
                 "ingestions_total": _labels_to_dict(
                     self.ingestions_total.label_names, self.ingestions_total.items()
+                ),
+                "provider_ops_total": _labels_to_dict(
+                    self.provider_ops_total.label_names, self.provider_ops_total.items()
+                ),
+                "model_installs_total": _labels_to_dict(
+                    self.model_installs_total.label_names, self.model_installs_total.items()
+                ),
+                "model_switch_total": _labels_to_dict(
+                    self.model_switch_total.label_names, self.model_switch_total.items()
                 ),
             },
             "histograms": {
