@@ -870,7 +870,94 @@ class RAGPipeline:
             "reranker_model": self.settings.reranker.model_name if self.enable_reranker else None,
             "model": self.embedder.model_name,
             "vector_store_backend": self.settings.vector_store.backend,
+            "chat_provider": getattr(self.llm, "name", "ollama"),
+            "chat_model": getattr(self.llm, "model", None),
         }
+
+    # ------------------------------------------------------------------ #
+    # Runtime mutation surface (Phase 12c)
+    # ------------------------------------------------------------------ #
+
+    def _ensure_owns_settings(self) -> None:
+        """Detach from a shared ``Settings`` singleton before any mutation.
+
+        We deep-copy lazily — the only allocations are when a runtime change is
+        first applied, so default deployments stay byte-identical.
+        """
+        if not getattr(self, "_owns_settings", False):
+            self.settings = self.settings.model_copy(deep=True)
+            self._owns_settings = True
+
+    def set_chat_provider(self, chat_cfg, secret_store=None) -> None:
+        """Replace the active chat provider live, without restarting.
+
+        ``chat_cfg`` is a :class:`src.providers.ChatModelConfig`. The provider
+        is built through :func:`make_chat_provider` so the API-key lookup,
+        capability gating, and registry checks are uniform.
+        """
+        from src.providers import make_chat_provider
+
+        new_llm = make_chat_provider(chat_cfg, secret_store=secret_store)
+        # Drop the cached expansion pipeline — it embeds the previous LLM in
+        # its strategies. Rebuild lazily on next use.
+        self._expansion_pipeline = None
+
+        self._ensure_owns_settings()
+        self.settings.llm.model = chat_cfg.model
+        if chat_cfg.base_url:
+            self.settings.llm.base_url = chat_cfg.base_url
+        self.settings.llm.max_tokens = chat_cfg.max_tokens
+        self.settings.llm.temperature = chat_cfg.temperature
+        self.settings.llm.request_timeout_s = chat_cfg.request_timeout_s
+
+        self.llm = new_llm
+        logger.info(
+            "Active chat provider switched: provider=%s model=%s",
+            chat_cfg.provider, chat_cfg.model,
+        )
+
+    def apply_live_settings(self, live) -> None:
+        """Apply a :class:`LiveQuerySettings` snapshot without rebuilding the index.
+
+        Only the safe / live-query knobs flow through here. Anything that would
+        change embedding dimensions / chunking / vector topology lives in
+        ``IndexConstructionSettings`` and is applied via the IndexManager.
+        """
+        self._ensure_owns_settings()
+
+        # ---- Retrieval knobs ---- #
+        self.settings.retrieval.k_default = live.retrieval_k_default
+        self.settings.retrieval.candidates_per_modality = live.retrieval_candidates_per_modality
+        self.settings.retrieval.rrf_k = live.retrieval_rrf_k
+
+        # ---- Reranker ---- #
+        # If the model changed (or it was off and is now on), drop the lazy
+        # instance so the next query rebuilds with the new config.
+        prev_model = self.settings.reranker.model_name
+        self.settings.reranker.enabled = live.reranker.enabled
+        self.settings.reranker.model_name = live.reranker.model
+        self.settings.reranker.top_n = live.reranker.top_n
+        self.settings.reranker.device = live.reranker.device
+        self.enable_reranker = live.reranker_enabled
+        if prev_model != live.reranker.model:
+            self._reranker = None
+
+        # ---- Query expansion ---- #
+        prev_strategies = sorted(self.settings.query_expansion.strategies)
+        self.settings.query_expansion.enabled = live.expansion_enabled
+        self.settings.query_expansion.strategies = list(live.expansion_strategies)
+        self.settings.query_expansion.multi_query_count = live.expansion_multi_query_count
+        self.settings.query_expansion.hyde_count = live.expansion_hyde_count
+        self.enable_expansion = live.expansion_enabled
+        if prev_strategies != sorted(live.expansion_strategies):
+            self._expansion_pipeline = None
+
+        logger.info(
+            "Live settings applied: reranker=%s expansion=%s rrf_k=%d candidates=%d",
+            self.enable_reranker, self.enable_expansion,
+            self.settings.retrieval.rrf_k,
+            self.settings.retrieval.candidates_per_modality,
+        )
 
 
 # =============================================================================

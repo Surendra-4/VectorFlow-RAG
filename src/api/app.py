@@ -42,6 +42,32 @@ from src.logging_setup import configure_from_settings, get_logger
 logger = get_logger(__name__)
 
 
+def _apply_runtime_config_to_pipeline(pipeline, runtime_config) -> None:
+    """Apply persisted runtime overrides on boot.
+
+    Idempotent and parity-preserving: when the persisted snapshot matches the
+    env baseline (fresh installs, no ``var/runtime_config.json``), this is a
+    no-op and behavior is byte-identical to pre-Phase-12.
+    """
+    live = runtime_config.live
+    # Only swap providers if it would actually change anything — otherwise the
+    # default-constructed OllamaClient stays in place for tightest parity.
+    current_provider = getattr(pipeline.llm, "name", "ollama")
+    current_model = getattr(pipeline.llm, "model", None)
+    if (live.chat.provider != current_provider) or (live.chat.model != current_model):
+        try:
+            pipeline.set_chat_provider(live.chat)
+        except Exception as exc:
+            logger.warning(
+                "Could not apply persisted chat provider (%s/%s): %s — keeping default.",
+                live.chat.provider, live.chat.model, exc,
+            )
+    try:
+        pipeline.apply_live_settings(live)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Could not apply persisted live settings: %s — keeping defaults.", exc)
+
+
 def _build_lifespan(settings: Settings, init_pipeline: bool):
     """Return an async lifespan context manager bound to the chosen settings."""
 
@@ -58,14 +84,18 @@ def _build_lifespan(settings: Settings, init_pipeline: bool):
             # Lazy import — keeps app construction cheap during test setup
             # where callers always override the pipeline via DI.
             from src.rag_pipeline import RAGPipeline
+            from src.runtime_config import RuntimeConfigStore
 
             logger.info("Initializing RAGPipeline for HTTP service…")
             app.state.pipeline = RAGPipeline(settings=settings)
+            app.state.runtime_config = RuntimeConfigStore(settings=settings)
+            _apply_runtime_config_to_pipeline(app.state.pipeline, app.state.runtime_config)
             logger.info("Pipeline ready (backend=%s, cache=%s)",
                         settings.vector_store.backend,
                         settings.cache.backend)
         else:
             app.state.pipeline = None
+            app.state.runtime_config = None
 
         try:
             yield

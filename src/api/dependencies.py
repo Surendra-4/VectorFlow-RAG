@@ -59,3 +59,17 @@ def get_request_id(request: Request) -> str:
 def get_started_at(request: Request) -> float:
     """Monotonic start time for the app process — used for uptime reporting."""
     return getattr(request.app.state, "started_at", 0.0)
+
+
+def get_runtime_config(request: Request):
+    """Return the process-wide ``RuntimeConfigStore`` (Phase 12c).
+
+    Raises 503 if the store isn't initialized (cold start / DI override path).
+    """
+    store = getattr(request.app.state, "runtime_config", None)
+    if store is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Runtime config not initialized",
+        )
+    return store
