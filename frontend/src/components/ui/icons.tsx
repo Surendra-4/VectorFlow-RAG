@@ -1,22 +1,27 @@
 import * as React from "react";
+import { cn } from "@/lib/utils/cn";
 
 /**
  * Inline stroke-icon set — no icon dependency. 24px grid, currentColor stroke,
- * 1.75 weight to match the UI. Each icon takes standard SVG props.
+ * 1.75 weight. Sized at 1em by default (scales with surrounding font-size); a
+ * caller's explicit height/width className still wins (CSS overrides the size
+ * attributes).
  */
 type IconProps = React.SVGProps<SVGSVGElement>;
 
-function Base({ children, ...p }: IconProps & { children: React.ReactNode }) {
+function Base({ children, className, ...p }: IconProps & { children: React.ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"
+      width="1em"
+      height="1em"
       fill="none"
       stroke="currentColor"
       strokeWidth={1.75}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className="h-[1.15em] w-[1.15em]"
+      className={cn("shrink-0", className)}
       {...p}
     >
       {children}
