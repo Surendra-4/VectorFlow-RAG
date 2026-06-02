@@ -170,6 +170,17 @@ class RAGPipeline:
         # Corpus fingerprint — set on ingestion; drives retrieval-cache invalidation.
         self.corpus_fingerprint: Optional[str] = None
 
+        # --- Named-index activation state (Phase 13) --------------------- #
+        # The store built at ingestion is the "default"; a named index can be
+        # activated on top of it (vector half swapped, BM25 kept). We retain
+        # the chunk records (text/chunk_id/metadata) so a named index can be
+        # built with *identical* identity + provenance, which is what makes a
+        # hot-swap correct (RRF joins on chunk_id; citations read metadata).
+        self.chunk_records: List[Dict[str, Any]] = []
+        self._default_vector_store = None
+        # None ⇒ the default store is live; a name ⇒ that named index is live.
+        self.active_index_name: Optional[str] = None
+
         print("\n✓ RAG Pipeline Ready!")
         print(f"  - Hybrid alpha: {self.alpha}  (kept for BC; RRF active)")
         print(f"  - RRF k:        {self.settings.retrieval.rrf_k}")
@@ -412,6 +423,14 @@ class RAGPipeline:
         )
         self.document_count = num_documents
 
+        # Phase 13: retain chunk records (text/chunk_id/metadata) so a named
+        # index can be built with identical identity + provenance. Reset any
+        # named-index activation — re-ingestion rebuilds the default store, so
+        # the freshly-built default is now the live index.
+        self.chunk_records = bm25_corpus
+        self._default_vector_store = self.vector_store
+        self.active_index_name = None
+
         # Corpus fingerprint changes on every ingestion. Retrieval-cache
         # entries keyed on the old fingerprint become unreachable
         # immediately; they TTL out without an explicit invalidate call.
@@ -426,6 +445,60 @@ class RAGPipeline:
         print("  - Ready for search and Q&A")
         print(f"{'='*70}\n")
         logger.info("Ingestion complete: %d documents, %d chunks", num_documents, len(chunk_texts))
+
+    # ------------------------------------------------------------------ #
+    # Named-index activation (Phase 13)
+    # ------------------------------------------------------------------ #
+
+    def iter_chunk_records(self):
+        """Return ``(texts, chunk_ids, metadatas)`` for the live corpus.
+
+        These are the identity-bearing records a named index must be built
+        from so that — after a switch — RRF still joins vector+BM25 on
+        ``chunk_id`` and citations still resolve from metadata. Empty lists
+        when nothing has been ingested.
+        """
+        texts = [r["text"] for r in self.chunk_records]
+        ids = [r["chunk_id"] for r in self.chunk_records]
+        metas = [r["metadata"] for r in self.chunk_records]
+        return texts, ids, metas
+
+    def _rebuild_hybrid_for(self, vector_store) -> None:
+        """Point hybrid retrieval at ``vector_store``, keeping the BM25 index.
+
+        Only the vector half of hybrid retrieval changes on a switch; BM25 is
+        keyed on the same ``chunk_id`` set, so the fusion join still holds.
+        """
+        if self.bm25_retriever is None:
+            raise ValueError("Cannot activate an index before any documents are ingested.")
+        self.vector_store = vector_store
+        self.hybrid_retriever = HybridRetriever(
+            embedder=self.embedder,
+            vector_store=vector_store,
+            bm25_retriever=self.bm25_retriever,
+            alpha=self.alpha,
+        )
+
+    def activate_named_index(self, name: str, vector_store) -> None:
+        """Make a named index the live vector store (vector half of hybrid).
+
+        Caller is responsible for compatibility gating (same embedder + same
+        corpus) — the API layer runs :func:`check_compatibility` first. This
+        method performs the swap and records the active name; the next search
+        uses it. Retrieval-cache entries differ by ``active_index_name`` in
+        the key, so cached results don't bleed across a switch.
+        """
+        self._rebuild_hybrid_for(vector_store)
+        self.active_index_name = name
+        logger.info("Activated named index %r in the live pipeline", name)
+
+    def activate_default_index(self) -> None:
+        """Revert live retrieval to the store built at ingestion time."""
+        if self._default_vector_store is None:
+            raise ValueError("No default index available — ingest documents first.")
+        self._rebuild_hybrid_for(self._default_vector_store)
+        self.active_index_name = None
+        logger.info("Reverted to the default index in the live pipeline")
 
     def _get_reranker(self) -> Optional[RerankerProtocol]:
         """Lazy-construct the reranker on first use, if enabled."""
@@ -506,6 +579,9 @@ class RAGPipeline:
         config = {
             "candidates_per_modality": self.settings.retrieval.candidates_per_modality,
             "rrf_k": self.settings.retrieval.rrf_k,
+            # Switching the live vector index changes results even at the same
+            # corpus fingerprint, so it must invalidate cached retrievals.
+            "active_index": self.active_index_name,
             "expansion_enabled": self.enable_expansion,
             "expansion_strategies": sorted(qcfg.strategies) if self.enable_expansion else [],
             "expansion_multi_query_count": qcfg.multi_query_count if self.enable_expansion else 0,
@@ -872,6 +948,7 @@ class RAGPipeline:
             "vector_store_backend": self.settings.vector_store.backend,
             "chat_provider": getattr(self.llm, "name", "ollama"),
             "chat_model": getattr(self.llm, "model", None),
+            "active_index_name": self.active_index_name,
         }
 
     # ------------------------------------------------------------------ #
