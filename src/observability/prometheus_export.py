@@ -58,6 +58,8 @@ def to_prometheus_text(reg: MetricsRegistry) -> str:
         reg.chunks_ingested_total,
         reg.ingest_failures_total,
         reg.stream_sessions_total,
+        reg.index_switch_total,
+        reg.benchmark_runs_total,
     ):
         if c.description:
             lines.append(f"# HELP {c.name} {c.description}")
@@ -70,6 +72,14 @@ def to_prometheus_text(reg: MetricsRegistry) -> str:
         reg.expansion_strategy_usage_total,
         reg.cache_ops_total,
         reg.ingestions_total,
+        # Phase 12 — model + index lifecycle (all bounded cardinality).
+        reg.provider_ops_total,
+        reg.provider_chat_total,
+        reg.provider_errors_total,
+        reg.model_installs_total,
+        reg.model_switch_total,
+        reg.index_jobs_total,
+        reg.index_builds_total,
     ):
         if lc.description:
             lines.append(f"# HELP {lc.name} {lc.description}")
@@ -100,7 +110,7 @@ def to_prometheus_text(reg: MetricsRegistry) -> str:
             lines.append(f"{h.name}_sum {snap['mean'] * snap['count']}")
 
     # ---- Labeled histograms (per-label summaries) ------------------------- #
-    for lh in (reg.request_latency_ms, reg.retrieval_stage_latency_ms):
+    for lh in (reg.request_latency_ms, reg.retrieval_stage_latency_ms, reg.index_build_duration_ms):
         if lh.description:
             lines.append(f"# HELP {lh.name} {lh.description}")
         lines.append(f"# TYPE {lh.name} summary")

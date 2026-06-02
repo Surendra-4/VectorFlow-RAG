@@ -122,6 +122,16 @@ class MetricsRegistry:
             "model_switch_total", ("provider", "kind"),
             "Active-model switch events by provider and model kind",
         )
+        # Provider usage + failures. Bounded: provider is a fixed registry,
+        # status/error_type are small fixed enums.
+        self.provider_chat_total = LabeledCounter(
+            "provider_chat_total", ("provider", "status"),
+            "Chat generations by provider and outcome",
+        )
+        self.provider_errors_total = LabeledCounter(
+            "provider_errors_total", ("provider", "error_type"),
+            "Provider-layer errors by provider and error class",
+        )
 
         # Index lifecycle (Phase 12h/i). Bounded: job type + terminal status,
         # and index_type is a fixed recipe enum (never the unbounded index name).
@@ -211,6 +221,12 @@ class MetricsRegistry:
                 "model_switch_total": _labels_to_dict(
                     self.model_switch_total.label_names, self.model_switch_total.items()
                 ),
+                "provider_chat_total": _labels_to_dict(
+                    self.provider_chat_total.label_names, self.provider_chat_total.items()
+                ),
+                "provider_errors_total": _labels_to_dict(
+                    self.provider_errors_total.label_names, self.provider_errors_total.items()
+                ),
                 "index_jobs_total": _labels_to_dict(
                     self.index_jobs_total.label_names, self.index_jobs_total.items()
                 ),
@@ -230,6 +246,10 @@ class MetricsRegistry:
                 "retrieval_stage_latency_ms": _labeled_hist_to_dict(
                     self.retrieval_stage_latency_ms.label_names,
                     self.retrieval_stage_latency_ms.items(),
+                ),
+                "index_build_duration_ms": _labeled_hist_to_dict(
+                    self.index_build_duration_ms.label_names,
+                    self.index_build_duration_ms.items(),
                 ),
             },
             "ring_buffer_sizes": {

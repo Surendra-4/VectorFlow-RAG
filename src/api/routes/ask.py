@@ -59,6 +59,7 @@ def ask(
         return_sources=req.return_sources,
         verbose=False,
     )
+    _record_provider_chat(pipeline, "success")
     sources_payload = None
     if req.return_sources and "sources" in response:
         sources_payload = [_to_result(s) for s in response["sources"]]
@@ -80,6 +81,17 @@ def _sse_event(event: str, data: Dict[str, Any]) -> str:
     """Format a Server-Sent Event chunk."""
     payload = json.dumps(data, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+def _record_provider_chat(pipeline, status: str) -> None:
+    """Count a chat generation by the active provider + outcome (bounded)."""
+    try:
+        from src.observability import get_metrics
+
+        provider = getattr(pipeline.llm, "name", "ollama")
+        get_metrics().provider_chat_total.inc(provider, status)
+    except Exception:  # pragma: no cover - metrics must never break a response
+        pass
 
 
 def _stream_ask_response(req: AskRequest, pipeline, request_id: str) -> StreamingResponse:

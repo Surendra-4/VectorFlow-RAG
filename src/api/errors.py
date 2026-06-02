@@ -146,6 +146,15 @@ def register_error_handlers(app) -> None:
             status_code, code = 503, "provider_unavailable"
         else:
             status_code, code = 502, "provider_error"
+        # Count provider failures (bounded: provider enum + exception class).
+        try:
+            from src.observability import get_metrics
+
+            get_metrics().provider_errors_total.inc(
+                exc.provider or "unknown", type(exc).__name__
+            )
+        except Exception:  # pragma: no cover - metrics must never break errors
+            pass
         return _error(
             request,
             status_code=status_code,
