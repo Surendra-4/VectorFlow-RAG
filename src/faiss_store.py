@@ -47,10 +47,12 @@ class FAISSVectorStore:
         self,
         persist_directory: Optional[str] = None,
         collection_name: Optional[str] = None,
-        index_type: Optional[Literal["hnsw", "flat", "ivf"]] = None,
+        index_type: Optional[str] = None,
         hnsw_m: Optional[int] = None,
         hnsw_ef_construction: Optional[int] = None,
         hnsw_ef_search: Optional[int] = None,
+        factory_string: Optional[str] = None,
+        nprobe: Optional[int] = None,
     ):
         # Lazy import — keeps `import src.*` cheap when FAISS isn't used.
         import faiss
@@ -77,6 +79,12 @@ class FAISSVectorStore:
         self.hnsw_ef_search: int = (
             hnsw_ef_search if hnsw_ef_search is not None else cfg.faiss_hnsw_ef_search
         )
+
+        # Phase 12f: when set, the index is built via faiss.index_factory and
+        # the manual hnsw/flat/ivf path is bypassed. ``nprobe`` is a search-time
+        # tunable for IVF-family recipes.
+        self.factory_string: Optional[str] = factory_string
+        self.nprobe: Optional[int] = nprobe
 
         # Sidecar tables — ID-first.
         self.documents: List[str] = []
@@ -109,8 +117,19 @@ class FAISSVectorStore:
         self.index = None
 
     def _build_index(self, dim: int):
-        """Construct a fresh FAISS index of the configured type."""
+        """Construct a fresh FAISS index of the configured type.
+
+        When ``factory_string`` is set (Phase 12f recipes) the index is built
+        via ``faiss.index_factory`` — the validated, general path. Otherwise the
+        legacy manual hnsw/flat/ivf builders are used (unchanged behavior).
+        """
         faiss = self._faiss
+
+        if self.factory_string:
+            idx = faiss.index_factory(dim, self.factory_string, faiss.METRIC_INNER_PRODUCT)
+            self._apply_search_params(idx)
+            return idx
+
         if self.index_type == "hnsw":
             idx = faiss.IndexHNSWFlat(dim, self.hnsw_m, faiss.METRIC_INNER_PRODUCT)
             idx.hnsw.efConstruction = self.hnsw_ef_construction
@@ -125,6 +144,28 @@ class FAISSVectorStore:
         else:
             raise ValueError(f"Unsupported FAISS index_type: {self.index_type!r}")
         return idx
+
+    def _apply_search_params(self, idx) -> None:
+        """Apply efSearch / nprobe to whatever sub-index supports them.
+
+        Composite factory indexes (e.g. IVF_HNSW, OPQ-IVF-PQ) hide their
+        tunables behind wrappers; ``extract_index_ivf`` and the ``hnsw`` attr
+        let us reach them without knowing the exact topology."""
+        faiss = self._faiss
+        # HNSW depth (plain HNSW or HNSW coarse quantizer).
+        if hasattr(idx, "hnsw"):
+            try:
+                idx.hnsw.efSearch = self.hnsw_ef_search
+            except Exception:  # pragma: no cover - defensive
+                pass
+        # IVF nprobe.
+        if self.nprobe is not None:
+            try:
+                ivf = faiss.extract_index_ivf(idx)
+                ivf.nprobe = self.nprobe
+            except Exception:
+                # Not an IVF index, or extraction unsupported — ignore.
+                pass
 
     def _to_float32(self, embeddings: Sequence[Sequence[float]]) -> np.ndarray:
         """Coerce embeddings to a contiguous (n, d) float32 array."""
@@ -154,6 +195,8 @@ class FAISSVectorStore:
             "hnsw_m": self.hnsw_m,
             "hnsw_ef_construction": self.hnsw_ef_construction,
             "hnsw_ef_search": self.hnsw_ef_search,
+            "factory_string": self.factory_string,
+            "nprobe": self.nprobe,
             "ids": self.ids,
             "documents": self.documents,
             "metadatas": self.metadatas,
@@ -180,10 +223,14 @@ class FAISSVectorStore:
         self.index_type = sidecar["index_type"]
         self.hnsw_m = sidecar.get("hnsw_m", self.hnsw_m)
         self.hnsw_ef_construction = sidecar.get("hnsw_ef_construction", self.hnsw_ef_construction)
+        self.factory_string = sidecar.get("factory_string", self.factory_string)
+        self.nprobe = sidecar.get("nprobe", self.nprobe)
 
         self.index = self._faiss.read_index(str(self._index_path))
-        # Apply current efSearch (search-time tunable, not persisted as authoritative).
-        if self.index_type == "hnsw" and hasattr(self.index, "hnsw"):
+        # Re-apply current search-time tunables (not persisted as authoritative).
+        if self.factory_string:
+            self._apply_search_params(self.index)
+        elif self.index_type == "hnsw" and hasattr(self.index, "hnsw"):
             self.index.hnsw.efSearch = self.hnsw_ef_search
 
         logger.info(
@@ -216,11 +263,14 @@ class FAISSVectorStore:
                 f"Embedding dimension mismatch: existing={self.embedding_dim}, new={dim}"
             )
 
-        # IVF requires training before adds (Flat / HNSW don't).
-        if self.index_type == "ivf" and not self.index.is_trained:
-            # Train on what we have; small corpora may have fewer vectors than nlist.
-            n_train = max(emb.shape[0], 1)
-            self.index.train(emb[:n_train])
+        # Trainable indexes (IVF / PQ / OPQ families, manual or factory-built)
+        # must be trained before adds. Flat / HNSW report is_trained=True, so
+        # this is a no-op for them.
+        if not self.index.is_trained:
+            self.index.train(emb)
+            # Re-apply search params: training can rebuild internal sub-indexes.
+            if self.factory_string:
+                self._apply_search_params(self.index)
 
         # Generate IDs / metadatas if absent.
         if ids is None:

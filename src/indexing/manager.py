@@ -90,16 +90,7 @@ class IndexManager:
                 backend="chromadb",
             )
         if profile.backend == "faiss":
-            bp = profile.build_params or {}
-            sp = profile.search_params or {}
-            kwargs: Dict[str, Any] = {"index_type": profile.index_type}
-            # Map known FAISS params; unknown keys are ignored by the store.
-            if "hnsw_m" in bp:
-                kwargs["hnsw_m"] = bp["hnsw_m"]
-            if "hnsw_ef_construction" in bp:
-                kwargs["hnsw_ef_construction"] = bp["hnsw_ef_construction"]
-            if "hnsw_ef_search" in sp:
-                kwargs["hnsw_ef_search"] = sp["hnsw_ef_search"]
+            kwargs = self._faiss_store_kwargs(profile)
             return make_vector_store(
                 persist_directory=str(persist_directory),
                 collection_name=INDEX_COLLECTION,
@@ -107,6 +98,45 @@ class IndexManager:
                 **kwargs,
             )
         raise IndexRegistryError(f"Unknown backend in profile: {profile.backend!r}")
+
+    def _faiss_store_kwargs(self, profile: IndexProfile) -> Dict[str, Any]:
+        """Translate a profile into FAISSVectorStore constructor kwargs.
+
+        If ``index_type`` is a Phase-12f recipe id, build a validated
+        ``factory_string`` from the recipe's params (resolved over defaults) and
+        pass it through. Otherwise fall back to the legacy hnsw/flat/ivf knobs.
+        """
+        from src.indexing import recipes as _recipes
+
+        bp = dict(profile.build_params or {})
+        sp = dict(profile.search_params or {})
+        kwargs: Dict[str, Any] = {"index_type": profile.index_type}
+
+        if profile.index_type in _recipes.RECIPES:
+            params = _recipes.resolve_params(profile.index_type, {**bp, **sp})
+            factory = _recipes.build_factory_string(
+                profile.index_type, params, profile.vector_dimension or 0
+            )
+            kwargs["factory_string"] = factory
+            # Search-time tunables shared by recipe + legacy paths.
+            if "efSearch" in params:
+                kwargs["hnsw_ef_search"] = params["efSearch"]
+            if "M" in params:
+                kwargs["hnsw_m"] = params["M"]
+            if "efConstruction" in params:
+                kwargs["hnsw_ef_construction"] = params["efConstruction"]
+            if "nprobe" in params:
+                kwargs["nprobe"] = params["nprobe"]
+            return kwargs
+
+        # Legacy explicit knobs.
+        if "hnsw_m" in bp:
+            kwargs["hnsw_m"] = bp["hnsw_m"]
+        if "hnsw_ef_construction" in bp:
+            kwargs["hnsw_ef_construction"] = bp["hnsw_ef_construction"]
+        if "hnsw_ef_search" in sp:
+            kwargs["hnsw_ef_search"] = sp["hnsw_ef_search"]
+        return kwargs
 
     # ------------------------------------------------------------------ #
     # Lifecycle
