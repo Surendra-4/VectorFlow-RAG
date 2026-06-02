@@ -277,6 +277,54 @@ multilingual profile improves monolingual MRR 0.889 → 1.0. Snapshots in
 
 ---
 
+## 8.5 Configurable platform architecture  [Phase 12]
+
+Phase 12 adds a runtime-configuration layer **on top of** the immutable
+env-driven `Settings`, so models and indexes change without a restart while the
+validated baseline stays byte-identical under defaults.
+
+**Provider abstraction (`src/providers/`).** One `ModelProvider` interface over
+offline (Ollama) + online (OpenAI/Anthropic/Gemini/Groq/OpenRouter) backends.
+`generate`/`stream_generate` keep the legacy `OllamaClient` signatures, so
+`pipeline.llm` can be any provider with no call-site changes. The frontend only
+ever sees `ProviderCapabilities`/`ProviderModel` JSON — never URLs or SDKs. API
+keys live solely in the backend `SecretStore` (Fernet-encrypted, `0600`,
+redacted) and are injected at construction by the registry factory.
+
+**Runtime config (`src/runtime_config.py`).** Splits settings into two classes:
+*live-query* (provider/model, reranker, expansion, RRF/k/candidates, cache) which
+apply to the running pipeline immediately, and *index-construction* (embedding
+model, chunking, backend, FAISS topology) which are **staged only** — a change
+here never silently rebuilds an index. Persisted to `var/runtime_config.json`.
+
+**Named indexes (`src/indexing/`).** `IndexProfile` + `IndexRegistry` make
+indexes first-class named entities (active pointer, persisted to
+`var/index_registry.json`; data under `indices/named/<name>/`). `IndexManager`
+does create/load/switch/delete/export/import. The FAISS **recipe** layer turns a
+`(recipe, params, dim)` into a validated `index_factory` string — validated
+statically *and* by constructing the empty index in FAISS — with memory/latency/
+training estimates. The **compatibility validator** grades a config change
+BLOCKING (different vector space → new index) / REBUILD (same vectors, rebuild) /
+INFO, driving the "create a new index?" safety UX. Nothing mutates silently.
+
+**Background jobs (`src/jobs/`).** A thread-pool `JobRegistry` runs FAISS
+builds/training/benchmarks off the HTTP worker with progress, cooperative
+cancellation, replayable SSE streaming, and bounded history. Index creation and
+benchmarking are submitted as jobs; the API returns `202 + job_id` and the UI
+streams `/jobs/{id}/stream`.
+
+All of this is additive: new routes under `/api/v1/models`, `/config/runtime`,
+`/indexes`, `/jobs`; existing routes and default behavior are unchanged.
+
+```
+Settings (immutable, env)  ──►  RuntimeConfigStore (mutable, var/)
+                                   ├─ live  ──► pipeline.apply_live_settings()
+                                   └─ staged index ──► IndexManager (build job)
+ModelProvider registry ──► pipeline.set_chat_provider()   SecretStore (var/, encrypted)
+```
+
+---
+
 ## 9. Deployment topology
 
 | Mode | Backend | Frontend | Cache | Notes |
@@ -325,7 +373,6 @@ CORS allows `http://localhost:3000` by default (`VFR_API__CORS_ORIGINS`).
 - **Incremental indexing & dedup** — stable chunk_ids make upsert-by-id and content-hash dedup mechanical.
 - **Reranker output caching** — key builder exists; wiring is one step.
 - **Per-namespace cache metrics** — emit `cache_ops_total{namespace, op}` from each wrapper.
-- **Model-switch endpoint** — expose runtime model selection (settings page is read-only today).
 - **Auth + multi-user** — request_id propagation and per-doc IDs already support tenant prefixing.
 - **Conversation persistence** — `useStreamingAsk` state is serializable; lift into a store + `/conversations` endpoint.
 - **Agentic events** — SSE taxonomy extends cleanly with `tool_call`/`tool_result`.
@@ -349,6 +396,10 @@ CORS allows `http://localhost:3000` by default (`VFR_API__CORS_ORIGINS`).
 | Query expansion | `src/query_expansion/` (base, multi_query, hyde, pipeline) |
 | Language detection | `src/language.py` |
 | LLM client | `src/llm_client.py` |
+| Model providers (offline+online) | `src/providers/` (base, ollama, online_base, openai/anthropic/gemini/groq/openrouter, registry, secrets) |
+| Runtime config (live vs staged) | `src/runtime_config.py` |
+| Named indexes / recipes / compat | `src/indexing/` (profile, registry, manager, recipes, compatibility, benchmark) |
+| Background jobs | `src/jobs/` (base, registry, index_jobs) |
 | Loaders | `src/loaders/` (base, registry, per-format) |
 | Cache | `src/cache/` (memory, redis, null, safe, codec, keys, factory, caching_embedder, caching_expansion) |
 | Observability | `src/observability/` (primitives, registry, prometheus_export), `src/retrieval_trace.py` |
