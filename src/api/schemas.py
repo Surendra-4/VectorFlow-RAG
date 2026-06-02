@@ -391,3 +391,78 @@ class StagedIndexResponse(BaseModel):
     # staged changes to take effect.
     rebuild_required: bool
     request_id: str
+
+
+# --------------------------------------------------------------------------- #
+# Index management (Phase 12e–i)
+# --------------------------------------------------------------------------- #
+
+
+class RecipeListResponse(BaseModel):
+    recipes: List[Dict[str, Any]]
+    request_id: str
+
+
+class RecipeValidateRequest(BaseModel):
+    recipe: str = Field(..., description="Recipe id, e.g. 'ivf_pq'.")
+    params: Optional[Dict[str, Any]] = None
+    dim: int = Field(..., ge=1, le=65536, description="Vector dimension.")
+    n_vectors: int = Field(default=0, ge=0)
+
+
+class RecipeValidateResponse(BaseModel):
+    validation: Dict[str, Any]
+    request_id: str
+
+
+class IndexListResponse(BaseModel):
+    indexes: List[Dict[str, Any]]
+    active: Optional[str] = None
+    request_id: str
+
+
+class IndexDetailResponse(BaseModel):
+    index: Dict[str, Any]
+    request_id: str
+
+
+class CreateIndexRequest(BaseModel):
+    """Build a new named index from the currently-ingested corpus."""
+
+    name: str = Field(..., min_length=1, max_length=64)
+    backend: str = Field(default="faiss")
+    index_type: str = Field(default="hnsw", description="Recipe id or legacy type.")
+    build_params: Optional[Dict[str, Any]] = None
+    search_params: Optional[Dict[str, Any]] = None
+    make_active: bool = False
+    overwrite: bool = False
+    description: str = ""
+
+
+class JobAcceptedResponse(BaseModel):
+    job_id: str
+    type: str
+    status: str
+    request_id: str
+
+
+class IndexActionResponse(BaseModel):
+    index_name: str
+    action: str
+    active: Optional[str] = None
+    request_id: str
+
+
+class CompatibilityResponse(BaseModel):
+    report: Dict[str, Any]
+    request_id: str
+
+
+class JobResponse(BaseModel):
+    job: Dict[str, Any]
+    request_id: str
+
+
+class JobListResponse(BaseModel):
+    jobs: List[Dict[str, Any]]
+    request_id: str

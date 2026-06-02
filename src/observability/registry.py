@@ -123,6 +123,27 @@ class MetricsRegistry:
             "Active-model switch events by provider and model kind",
         )
 
+        # Index lifecycle (Phase 12h/i). Bounded: job type + terminal status,
+        # and index_type is a fixed recipe enum (never the unbounded index name).
+        self.index_jobs_total = LabeledCounter(
+            "index_jobs_total", ("type", "status"),
+            "Background jobs by type and terminal status",
+        )
+        self.index_builds_total = LabeledCounter(
+            "index_builds_total", ("index_type", "status"),
+            "Index builds by FAISS recipe and outcome",
+        )
+        self.index_build_duration_ms = LabeledHistogram(
+            "index_build_duration_ms", ("index_type",),
+            description="Index build wall-clock by recipe",
+        )
+        self.index_switch_total = Counter(
+            "index_switch_total", "Active-index switch events"
+        )
+        self.benchmark_runs_total = Counter(
+            "benchmark_runs_total", "Index benchmark runs"
+        )
+
         # Streaming
         self.active_streams = Gauge("active_streams", "Currently-open SSE streams")
         self.stream_sessions_total = Counter(
@@ -161,6 +182,8 @@ class MetricsRegistry:
                 "chunks_ingested_total": self.chunks_ingested_total.value,
                 "ingest_failures_total": self.ingest_failures_total.value,
                 "stream_sessions_total": self.stream_sessions_total.value,
+                "index_switch_total": self.index_switch_total.value,
+                "benchmark_runs_total": self.benchmark_runs_total.value,
             },
             "gauges": {
                 "active_streams": self.active_streams.value,
@@ -187,6 +210,12 @@ class MetricsRegistry:
                 ),
                 "model_switch_total": _labels_to_dict(
                     self.model_switch_total.label_names, self.model_switch_total.items()
+                ),
+                "index_jobs_total": _labels_to_dict(
+                    self.index_jobs_total.label_names, self.index_jobs_total.items()
+                ),
+                "index_builds_total": _labels_to_dict(
+                    self.index_builds_total.label_names, self.index_builds_total.items()
                 ),
             },
             "histograms": {

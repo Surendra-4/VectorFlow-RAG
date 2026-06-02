@@ -80,6 +80,16 @@ def _build_lifespan(settings: Settings, init_pipeline: bool):
         app.state.ingest_lock = threading.Lock()
         app.state.settings = settings
 
+        # Index manager + job registry are cheap (no model load) and useful in
+        # every mode — construct them unconditionally so the index/jobs API
+        # works even when a pipeline isn't auto-initialized.
+        from src.indexing import IndexManager
+        from src.jobs import JobRegistry
+
+        app.state.index_manager = IndexManager()
+        app.state.job_registry = JobRegistry()
+        _wire_job_metrics(app.state.job_registry)
+
         if init_pipeline:
             # Lazy import — keeps app construction cheap during test setup
             # where callers always override the pipeline via DI.
@@ -101,8 +111,34 @@ def _build_lifespan(settings: Settings, init_pipeline: bool):
             yield
         finally:
             logger.info("FastAPI app shutting down")
+            jr = getattr(app.state, "job_registry", None)
+            if jr is not None:
+                jr.shutdown(wait=False)
 
     return lifespan
+
+
+def _wire_job_metrics(job_registry) -> None:
+    """Record terminal job outcomes into the metrics registry (bounded labels)."""
+    def _hook(job) -> None:
+        try:
+            from src.observability import get_metrics
+
+            m = get_metrics()
+            m.index_jobs_total.inc(job.type, job.status.value)
+            # Per-recipe build metrics — index_type is a fixed recipe enum, so
+            # cardinality stays bounded (never the unbounded index name).
+            if job.type == "index_build" and isinstance(job.result, dict):
+                itype = str(job.result.get("index_type", "unknown"))
+                m.index_builds_total.inc(itype, job.status.value)
+                if job.started_at and job.finished_at:
+                    m.index_build_duration_ms.observe(
+                        itype, value=(job.finished_at - job.started_at) * 1000
+                    )
+        except Exception:  # pragma: no cover - metrics must never break jobs
+            pass
+
+    job_registry.set_metrics_hook(_hook)
 
 
 def create_app(
@@ -148,7 +184,9 @@ def create_app(
         config as config_routes,
         documents,
         health,
+        indexes,
         ingest,
+        jobs,
         models,
         observability,
         search,
@@ -166,6 +204,8 @@ def create_app(
     app.include_router(observability.router, prefix="/api/v1")
     app.include_router(models.router, prefix="/api/v1")
     app.include_router(config_routes.router, prefix="/api/v1")
+    app.include_router(indexes.router, prefix="/api/v1")
+    app.include_router(jobs.router, prefix="/api/v1")
 
     return app
 
