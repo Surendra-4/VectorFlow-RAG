@@ -82,7 +82,7 @@ export function ChatInterface() {
     <div className="grid gap-6 lg:grid-cols-3">
       {/* Left: conversation column */}
       <div className="space-y-4 lg:col-span-2">
-        <Card>
+        <Card variant="gradient">
           <form onSubmit={onSubmit} className="space-y-3">
             <label htmlFor="ask-query" className="sr-only">
               Question
@@ -178,7 +178,7 @@ export function ChatInterface() {
 
       {/* Right: source / citation column */}
       <aside aria-label="Sources" className="space-y-3" data-chat-sources>
-        <Card>
+        <Card variant="glass" className="lg:sticky lg:top-24">
           <CardTitle>Sources</CardTitle>
           <SourcePanel sources={stream.sources} />
         </Card>
