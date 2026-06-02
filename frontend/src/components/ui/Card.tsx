@@ -3,15 +3,33 @@
 import * as React from "react";
 import { cn } from "@/lib/utils/cn";
 
+type Variant = "default" | "glass" | "gradient";
+
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: Variant;
+  /** Lift + glow on hover (use for interactive/clickable cards). */
+  interactive?: boolean;
+}
+
+/**
+ * Surface container. `glass` frosts the background; `gradient` adds an aurora
+ * hairline border. `interactive` adds a hover lift + glow for clickable cards.
+ */
 export function Card({
   className,
+  variant = "default",
+  interactive = false,
   children,
   ...rest
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: CardProps) {
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-surface p-4 shadow-sm",
+        "relative rounded-xl2 p-4 shadow-soft",
+        variant === "glass" && "glass",
+        variant === "gradient" && "glass border-gradient",
+        variant === "default" && "border border-border/70 bg-surface/80 backdrop-blur-sm",
+        interactive && "transition-all duration-300 hover:-translate-y-0.5 hover:shadow-glow",
         className
       )}
       {...rest}
@@ -29,7 +47,7 @@ export function CardTitle({
   return (
     <h3
       className={cn(
-        "mb-1 text-sm font-semibold uppercase tracking-wide text-fg-muted",
+        "mb-2 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-fg-muted",
         className
       )}
       {...rest}

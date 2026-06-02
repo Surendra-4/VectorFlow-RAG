@@ -13,14 +13,14 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<Variant, string> = {
+  // Aurora gradient + a sheen sweep that animates across on hover.
   primary:
-    "bg-accent text-accent-fg hover:opacity-90 focus-visible:ring-accent disabled:opacity-50",
+    "group/btn relative overflow-hidden bg-aurora bg-[length:200%_auto] text-accent-fg shadow-glow-sm " +
+    "hover:bg-[position:100%_50%] hover:shadow-glow disabled:opacity-50",
   secondary:
-    "bg-surface-raised text-fg border border-border hover:bg-surface focus-visible:ring-accent disabled:opacity-50",
-  ghost:
-    "text-fg hover:bg-surface-raised focus-visible:ring-accent disabled:opacity-40",
-  danger:
-    "bg-danger text-white hover:opacity-90 focus-visible:ring-danger disabled:opacity-50",
+    "border border-border/80 bg-surface-raised/60 text-fg backdrop-blur-sm hover:border-accent/40 hover:text-fg disabled:opacity-50",
+  ghost: "text-fg-muted hover:bg-surface-raised hover:text-fg disabled:opacity-40",
+  danger: "bg-danger text-white hover:opacity-90 disabled:opacity-50",
 };
 
 const SIZES: Record<Size, string> = {
@@ -38,21 +38,28 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         className={cn(
-          "inline-flex items-center justify-center gap-2 rounded font-medium transition-colors",
-          "disabled:cursor-not-allowed",
+          "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-300",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+          "disabled:cursor-not-allowed disabled:shadow-none",
           VARIANTS[variant],
           SIZES[size],
           className
         )}
         {...rest}
       >
+        {variant === "primary" && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover/btn:translate-x-full"
+          />
+        )}
         {loading && (
           <span
             aria-hidden="true"
             className="h-3 w-3 animate-spin rounded-full border-2 border-current border-r-transparent"
           />
         )}
-        {children}
+        <span className="relative">{children}</span>
       </button>
     );
   }
