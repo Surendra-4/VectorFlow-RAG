@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils/cn";
+import { UploadIcon } from "@/components/ui/icons";
 
 const SUPPORTED_EXTENSIONS = [
   ".txt", ".md", ".log", ".json",
@@ -53,15 +54,25 @@ export function DropZone({ onFiles, disabled }: DropZoneProps) {
       aria-disabled={disabled}
       aria-label="Upload files by clicking or dropping"
       className={cn(
-        "flex min-h-[180px] cursor-pointer flex-col items-center justify-center gap-2 rounded border-2 border-dashed bg-surface px-4 py-8 text-center",
-        hover ? "border-accent bg-accent/5" : "border-border",
+        "group relative flex min-h-[200px] cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl2 border-2 border-dashed px-4 py-8 text-center transition-all duration-300",
+        hover
+          ? "border-accent/70 bg-accent/[0.07] shadow-glow"
+          : "border-border/70 bg-surface/60 backdrop-blur-sm hover:border-accent/40",
         disabled && "cursor-not-allowed opacity-60"
       )}
     >
-      <p className="text-sm font-medium text-fg">
+      <span
+        className={cn(
+          "grid h-14 w-14 place-items-center rounded-2xl border border-border/60 bg-surface-raised/60 text-accent transition-transform duration-300",
+          hover ? "scale-110 animate-float" : "group-hover:scale-105"
+        )}
+      >
+        <UploadIcon className="h-6 w-6" />
+      </span>
+      <p className="text-sm font-semibold text-fg">
         Drop files here or click to browse
       </p>
-      <p className="text-xs text-fg-muted">
+      <p className="max-w-sm text-xs text-fg-muted">
         Supported: TXT · MD · JSON · CSV · XLSX · SQLite · PDF · DOCX · images (OCR)
       </p>
       <input
