@@ -31,7 +31,6 @@ from src.api.dependencies import (
     get_job_registry,
     get_pipeline,
     get_request_id,
-    get_runtime_config,
 )
 from src.api.schemas import (
     BenchmarkRequest,
@@ -51,7 +50,6 @@ from src.indexing import (
     IndexTargetConfig,
     check_compatibility,
     list_recipes,
-    target_from_index_settings,
     validate_recipe,
 )
 from src.indexing.recipes import RecipeError
@@ -62,6 +60,27 @@ from src.observability import get_metrics
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["indexes"], prefix="/indexes")
+
+
+def _live_switch_target(profile, pipeline) -> IndexTargetConfig:
+    """Build the compatibility target for 'can this index serve live retrieval'.
+
+    Uses the index's own structural fields (backend / topology / chunking are
+    non-issues — switching topology is the whole point) against the LIVE
+    embedder identity + corpus fingerprint. So compatible ⇔ same embedding
+    model + dimension AND same corpus, which is exactly when a switch is safe.
+    """
+    live_dim = getattr(getattr(pipeline, "embedder", None), "dimension", 0) or 0
+    live_model = getattr(getattr(pipeline, "embedder", None), "model_name", "")
+    return IndexTargetConfig(
+        embedding_model=live_model,
+        backend=profile.backend,
+        index_type=profile.index_type,
+        chunk_size=profile.chunk_size,
+        chunk_overlap=profile.chunk_overlap,
+        vector_dimension=live_dim,
+        corpus_fingerprint=getattr(pipeline, "corpus_fingerprint", None),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -255,22 +274,7 @@ def switch_index(
     except IndexRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    # Build a switch target: the index's own structural fields (so backend /
-    # topology / chunking are non-issues — switching topology is the point),
-    # against the LIVE embedding identity + corpus fingerprint. compatible ⇔
-    # same embedding model+dim AND same corpus.
-    live_dim = getattr(getattr(pipeline, "embedder", None), "dimension", 0) or 0
-    live_model = getattr(getattr(pipeline, "embedder", None), "model_name", "")
-    target = IndexTargetConfig(
-        embedding_model=live_model,
-        backend=profile.backend,
-        index_type=profile.index_type,
-        chunk_size=profile.chunk_size,
-        chunk_overlap=profile.chunk_overlap,
-        vector_dimension=live_dim,
-        corpus_fingerprint=getattr(pipeline, "corpus_fingerprint", None),
-    )
-    report = check_compatibility(profile, target)
+    report = check_compatibility(profile, _live_switch_target(profile, pipeline))
     if not report.compatible:
         # Return a structured ErrorResponse-shaped 409 so the frontend gets the
         # full report in `details` (an HTTPException would stringify it).
@@ -346,25 +350,21 @@ def delete_index(
 def index_compatibility(
     name: str,
     manager=Depends(get_index_manager),
-    runtime=Depends(get_runtime_config),
     pipeline=Depends(get_pipeline),
     request_id: str = Depends(get_request_id),
 ) -> CompatibilityResponse:
-    """Check a named index against the *staged* index configuration.
+    """Can this index serve live retrieval *right now*?
 
-    Powers the "incompatible — create a new index?" UX. Uses the running
-    embedder's dimension when available for a precise dimension check."""
+    Checks against the LIVE embedder identity + corpus fingerprint — the exact
+    same gate `POST /{name}/switch` enforces — so the frontend "Check" and
+    "Use" buttons never contradict each other. compatible ⇔ switch will succeed.
+    """
     try:
         profile = manager.registry.get(name)
     except IndexRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    dim = getattr(getattr(pipeline, "embedder", None), "dimension", 0) or 0
-    target = target_from_index_settings(
-        runtime.staged_index, vector_dimension=dim,
-        corpus_fingerprint=getattr(pipeline, "corpus_fingerprint", None),
-    )
-    report = check_compatibility(profile, target)
+    report = check_compatibility(profile, _live_switch_target(profile, pipeline))
     return CompatibilityResponse(report=report.to_dict(), request_id=request_id)
 
 

@@ -76,7 +76,11 @@ export function useStreamingAsk(): UseStreamingAskResult {
               if (evt.answer && evt.answer !== accumulated) {
                 setAnswer(evt.answer);
               }
-              setState("done");
+              // The server always emits `done` after an `error` (e.g. the LLM
+              // was unreachable but retrieval succeeded). Never let `done`
+              // clobber an error state, or the failure is silently swallowed
+              // and the user sees an empty answer with no explanation.
+              setState((s) => (s === "error" ? "error" : "done"));
               break;
             case "error":
               setErrorMessage(evt.message);

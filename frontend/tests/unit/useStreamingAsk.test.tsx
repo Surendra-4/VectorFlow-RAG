@@ -96,6 +96,39 @@ describe("useStreamingAsk", () => {
     expect(result.current.errorMessage).toBe("LLM exploded");
   });
 
+  it("keeps error state when a done event follows an error (LLM down)", async () => {
+    // The server emits sources → error → done when retrieval succeeds but the
+    // LLM is unreachable. `done` must not clobber the error, or the failure is
+    // silently swallowed (empty answer, no explanation).
+    mocks.streamAsk.mockReturnValue(
+      scriptedEvents([
+        { type: "sources", request_id: "x", sources: [{ text: "ctx", chunk_id: "c0" }] },
+        { type: "error", message: "[Error communicating with Ollama: port 11434 refused]" },
+        {
+          type: "done",
+          request_id: "x",
+          answer: "",
+          metrics: {
+            retrieval_time_ms: 12, generation_time_ms: 0, total_time_ms: 12,
+            num_context_docs: 1,
+          },
+        },
+      ])
+    );
+
+    const { result } = renderHook(() => useStreamingAsk());
+    await act(async () => {
+      await result.current.start({ query: "q" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.state).toBe("error");
+    });
+    // Error preserved AND sources still available (retrieval succeeded).
+    expect(result.current.errorMessage).toContain("11434");
+    expect(result.current.sources).toHaveLength(1);
+  });
+
   it("reset clears all state back to idle defaults", async () => {
     mocks.streamAsk.mockReturnValue(
       scriptedEvents([
