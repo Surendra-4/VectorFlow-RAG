@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/Badge";
 import { statusApi, ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils/cn";
 
 type Status = "checking" | "online" | "offline";
 
@@ -38,7 +38,25 @@ export function StatusBadge() {
     };
   }, []);
 
-  if (status === "checking") return <Badge tone="neutral">Checking…</Badge>;
-  if (status === "online") return <Badge tone="success">Backend online</Badge>;
-  return <Badge tone="danger">Backend offline</Badge>;
+  const meta = {
+    checking: { dot: "bg-fg-muted", label: "Checking…" },
+    online: { dot: "bg-success", label: "Backend online" },
+    offline: { dot: "bg-danger", label: "Backend offline" },
+  }[status];
+
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-surface-raised/50 px-2.5 py-1 text-xs font-medium backdrop-blur"
+    >
+      <span className="relative flex h-2 w-2">
+        {status === "online" && (
+          <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping", meta.dot)} />
+        )}
+        <span className={cn("relative inline-flex h-2 w-2 rounded-full", meta.dot)} />
+      </span>
+      {meta.label}
+    </span>
+  );
 }
