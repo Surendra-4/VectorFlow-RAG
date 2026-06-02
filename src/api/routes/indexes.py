@@ -32,6 +32,7 @@ from src.api.dependencies import (
     get_runtime_config,
 )
 from src.api.schemas import (
+    BenchmarkRequest,
     CompatibilityResponse,
     CreateIndexRequest,
     IndexActionResponse,
@@ -51,7 +52,7 @@ from src.indexing import (
     validate_recipe,
 )
 from src.indexing.recipes import RecipeError
-from src.jobs import build_index_job
+from src.jobs import benchmark_recipes_job, build_index_job
 from src.logging_setup import get_logger
 from src.observability import get_metrics
 
@@ -183,6 +184,48 @@ def create_index(
 # --------------------------------------------------------------------------- #
 # Switch / delete / export
 # --------------------------------------------------------------------------- #
+
+
+@router.post("/benchmark", response_model=JobAcceptedResponse, status_code=202)
+def benchmark_indexes(
+    req: BenchmarkRequest,
+    registry=Depends(get_job_registry),
+    pipeline=Depends(get_pipeline),
+    request_id: str = Depends(get_request_id),
+) -> JobAcceptedResponse:
+    """Benchmark a set of FAISS recipes over the current corpus as a background
+    job. Each recipe is scored (Recall@K / MRR / latency / size) against an
+    exact Flat reference. Poll /jobs/{id} for results."""
+    from src.config import get_settings
+    from src.indexing.recipes import RECIPES
+
+    corpus = list(getattr(pipeline, "corpus", []) or [])
+    if not corpus:
+        raise HTTPException(status_code=400, detail="No documents ingested to benchmark.")
+
+    unknown = [r for r in req.recipes if r not in RECIPES]
+    if unknown:
+        raise HTTPException(status_code=400, detail={"unknown_recipes": unknown})
+
+    root = Path(get_settings().app.project_root)
+    workdir = root / "var" / "benchmarks" / request_id
+    persist_path = None
+    if req.persist:
+        ts = int(__import__("time").time())
+        persist_path = root / "experiments" / "artifacts" / f"index_benchmark_{ts}.json"
+
+    job = registry.submit(
+        "index_benchmark", benchmark_recipes_job, label="Benchmark recipes",
+        texts=corpus, recipe_ids=req.recipes, workdir=workdir,
+        embedder=pipeline.embedder, k=req.k, params=req.params, persist_path=persist_path,
+    )
+    try:
+        get_metrics().benchmark_runs_total.inc()
+    except Exception:  # pragma: no cover
+        pass
+    return JobAcceptedResponse(
+        job_id=job.id, type=job.type, status=job.status.value, request_id=request_id
+    )
 
 
 @router.post("/{name}/switch", response_model=IndexActionResponse)

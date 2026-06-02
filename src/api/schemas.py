@@ -458,6 +458,17 @@ class CompatibilityResponse(BaseModel):
     request_id: str
 
 
+class BenchmarkRequest(BaseModel):
+    """Benchmark several FAISS recipes over the current corpus (background job)."""
+
+    recipes: List[str] = Field(..., min_length=1, description="Recipe ids to compare.")
+    k: int = Field(default=10, ge=1, le=100)
+    params: Optional[Dict[str, Dict[str, Any]]] = Field(
+        default=None, description="Per-recipe param overrides keyed by recipe id."
+    )
+    persist: bool = Field(default=True, description="Write a schema-versioned artifact.")
+
+
 class JobResponse(BaseModel):
     job: Dict[str, Any]
     request_id: str

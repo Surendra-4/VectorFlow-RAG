@@ -13,6 +13,13 @@ Public surface:
 * :class:`IndexManager`
 """
 
+from src.indexing.benchmark import (
+    BenchmarkResult,
+    benchmark_recipes,
+    evaluate_store,
+    exact_neighbors,
+    persist_benchmark,
+)
 from src.indexing.compatibility import (
     Action,
     CompatibilityIssue,
@@ -43,9 +50,14 @@ from src.indexing.registry import (
 
 __all__ = [
     "Action",
+    "BenchmarkResult",
     "CompatibilityIssue",
     "CompatibilityReport",
     "CompatibilitySignature",
+    "benchmark_recipes",
+    "evaluate_store",
+    "exact_neighbors",
+    "persist_benchmark",
     "IndexManager",
     "IndexProfile",
     "IndexRegistry",

@@ -229,6 +229,29 @@ def test_cancel_unknown_job_404(client):
     assert client.post("/api/v1/jobs/nope/cancel").status_code == 404
 
 
+# --------------------------------------------------------------------------- #
+# Benchmark
+# --------------------------------------------------------------------------- #
+
+
+def test_benchmark_recipes_runs_as_job(client):
+    r = client.post("/api/v1/indexes/benchmark",
+                    json={"recipes": ["flat", "hnsw"], "k": 3, "persist": False})
+    assert r.status_code == 202
+    job = _wait_job(client, r.json()["job_id"])
+    assert job["status"] == "succeeded"
+    recipes = {res["recipe"] for res in job["result"]["results"]}
+    assert recipes == {"flat", "hnsw"}
+    # Flat is exact → perfect recall on the self-retrieval benchmark.
+    flat = next(res for res in job["result"]["results"] if res["recipe"] == "flat")
+    assert flat["recall_at_k"] == 1.0
+
+
+def test_benchmark_unknown_recipe_400(client):
+    r = client.post("/api/v1/indexes/benchmark", json={"recipes": ["flat", "bogus"]})
+    assert r.status_code == 400
+
+
 def test_index_routes_in_openapi(client):
     paths = client.get("/openapi.json").json()["paths"]
     assert "/api/v1/indexes" in paths

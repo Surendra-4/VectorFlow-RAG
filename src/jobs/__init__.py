@@ -15,7 +15,7 @@ Public surface:
 """
 
 from src.jobs.base import Job, JobCancelled, JobContext, JobStatus
-from src.jobs.index_jobs import build_index_job
+from src.jobs.index_jobs import benchmark_recipes_job, build_index_job
 from src.jobs.registry import JobRegistry, get_job_registry, reset_job_registry
 
 __all__ = [
@@ -24,6 +24,7 @@ __all__ = [
     "JobContext",
     "JobRegistry",
     "JobStatus",
+    "benchmark_recipes_job",
     "build_index_job",
     "get_job_registry",
     "reset_job_registry",
