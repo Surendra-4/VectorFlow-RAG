@@ -23,9 +23,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from src.api.dependencies import (
     get_index_manager,
+    get_ingest_lock,
     get_job_registry,
     get_pipeline,
     get_request_id,
@@ -46,6 +48,7 @@ from src.api.schemas import (
 from src.indexing import (
     IndexProfile,
     IndexRegistryError,
+    IndexTargetConfig,
     check_compatibility,
     list_recipes,
     target_from_index_settings,
@@ -140,8 +143,11 @@ def create_index(
     /jobs/{id}/stream for progress. The corpus is re-embedded with the
     pipeline's active embedder so the new index is self-consistent.
     """
-    corpus = list(getattr(pipeline, "corpus", []) or [])
-    if not corpus:
+    # Build from the pipeline's actual chunk records so the named index carries
+    # identical chunk_ids + provenance — required for a correct live switch
+    # (RRF joins on chunk_id; citations read metadata).
+    texts, ids, metas = pipeline.iter_chunk_records()
+    if not texts:
         raise HTTPException(status_code=400, detail="No documents ingested to build an index from.")
     if manager.registry.exists(req.name) and not req.overwrite:
         raise HTTPException(status_code=409, detail=f"Index {req.name!r} already exists.")
@@ -151,7 +157,7 @@ def create_index(
 
     if req.index_type in RECIPES:
         v = validate_recipe(req.index_type, {**(req.build_params or {}), **(req.search_params or {})},
-                            dim=pipeline.embedder.dimension, n_vectors=len(corpus))
+                            dim=pipeline.embedder.dimension, n_vectors=len(texts))
         if not v.ok:
             raise HTTPException(status_code=400, detail={"recipe_errors": v.errors})
 
@@ -172,7 +178,7 @@ def create_index(
 
     job = registry.submit(
         "index_build", build_index_job, label=f"Build index {req.name}",
-        manager=manager, profile=profile, texts=corpus,
+        manager=manager, profile=profile, texts=texts, ids=ids, metadatas=metas,
         embedder=pipeline.embedder, make_active=req.make_active, overwrite=req.overwrite,
     )
     logger.info("Enqueued index build job %s for index %r", job.id, req.name)
@@ -232,12 +238,62 @@ def benchmark_indexes(
 def switch_index(
     name: str,
     manager=Depends(get_index_manager),
+    pipeline=Depends(get_pipeline),
+    lock=Depends(get_ingest_lock),
     request_id: str = Depends(get_request_id),
 ) -> IndexActionResponse:
+    """Make a named index serve live retrieval — compatibility-gated.
+
+    The index must be queryable by the *current* embedder (same model +
+    dimension) and built over the *current* corpus (same fingerprint), else the
+    vector/BM25 join breaks and provenance is wrong. On a mismatch we return 409
+    with the compatibility report instead of switching — the "create a new
+    index?" safety contract. Only the vector half of hybrid retrieval changes.
+    """
     try:
-        manager.registry.set_active(name)
+        profile = manager.registry.get(name)
     except IndexRegistryError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+    # Build a switch target: the index's own structural fields (so backend /
+    # topology / chunking are non-issues — switching topology is the point),
+    # against the LIVE embedding identity + corpus fingerprint. compatible ⇔
+    # same embedding model+dim AND same corpus.
+    live_dim = getattr(getattr(pipeline, "embedder", None), "dimension", 0) or 0
+    live_model = getattr(getattr(pipeline, "embedder", None), "model_name", "")
+    target = IndexTargetConfig(
+        embedding_model=live_model,
+        backend=profile.backend,
+        index_type=profile.index_type,
+        chunk_size=profile.chunk_size,
+        chunk_overlap=profile.chunk_overlap,
+        vector_dimension=live_dim,
+        corpus_fingerprint=getattr(pipeline, "corpus_fingerprint", None),
+    )
+    report = check_compatibility(profile, target)
+    if not report.compatible:
+        # Return a structured ErrorResponse-shaped 409 so the frontend gets the
+        # full report in `details` (an HTTPException would stringify it).
+        return JSONResponse(
+            status_code=409,
+            content={
+                "code": "index_incompatible",
+                "message": report.message,
+                "details": {"compatibility": report.to_dict()},
+                "request_id": request_id,
+            },
+        )
+
+    try:
+        store = manager.load_index(name)
+        with lock:
+            pipeline.activate_named_index(name, store)
+            manager.registry.set_active(name)
+    except IndexRegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     try:
         get_metrics().index_switch_total.inc()
     except Exception:  # pragma: no cover
@@ -245,6 +301,28 @@ def switch_index(
     return IndexActionResponse(
         index_name=name, action="switched",
         active=manager.registry.active_name, request_id=request_id,
+    )
+
+
+@router.post("/activate-default", response_model=IndexActionResponse)
+def activate_default(
+    pipeline=Depends(get_pipeline),
+    lock=Depends(get_ingest_lock),
+    request_id: str = Depends(get_request_id),
+) -> IndexActionResponse:
+    """Revert live retrieval to the default store built at ingestion time."""
+    try:
+        with lock:
+            pipeline.activate_default_index()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        get_metrics().index_switch_total.inc()
+    except Exception:  # pragma: no cover
+        pass
+    return IndexActionResponse(
+        index_name="(default)", action="activated_default",
+        active=None, request_id=request_id,
     )
 
 

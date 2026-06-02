@@ -39,6 +39,7 @@ def status(
         corpus_fingerprint=pipeline.corpus_fingerprint,
         rrf_k=settings.retrieval.rrf_k,
         candidates_per_modality=settings.retrieval.candidates_per_modality,
+        active_index_name=getattr(pipeline, "active_index_name", None),
         uptime_s=time.monotonic() - started_at if started_at else 0.0,
         request_id=request_id,
     )
