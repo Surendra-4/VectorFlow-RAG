@@ -37,7 +37,7 @@ export function StatCard({
       {icon && (
         <span
           className={cn(
-            "grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border/60 bg-surface-raised/60",
+            "grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border/60 bg-surface-raised/60 text-[1.3rem]",
             toneRing[tone]
           )}
         >
