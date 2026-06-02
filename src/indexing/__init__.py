@@ -15,6 +15,17 @@ Public surface:
 
 from src.indexing.manager import IndexManager
 from src.indexing.profile import CompatibilitySignature, IndexProfile
+from src.indexing.recipes import (
+    RECIPES,
+    RecipeError,
+    RecipeSpec,
+    build_factory_string,
+    estimate,
+    get_recipe,
+    list_recipes,
+    resolve_params,
+    validate_recipe,
+)
 from src.indexing.registry import (
     IndexRegistry,
     IndexRegistryError,
@@ -27,5 +38,14 @@ __all__ = [
     "IndexProfile",
     "IndexRegistry",
     "IndexRegistryError",
+    "RECIPES",
+    "RecipeError",
+    "RecipeSpec",
+    "build_factory_string",
+    "estimate",
+    "get_recipe",
+    "list_recipes",
+    "resolve_params",
     "validate_index_name",
+    "validate_recipe",
 ]
