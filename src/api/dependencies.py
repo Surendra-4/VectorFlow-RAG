@@ -73,3 +73,25 @@ def get_runtime_config(request: Request):
             detail="Runtime config not initialized",
         )
     return store
+
+
+def get_index_manager(request: Request):
+    """Return the process-wide ``IndexManager`` (Phase 12e/h)."""
+    im = getattr(request.app.state, "index_manager", None)
+    if im is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Index manager not initialized",
+        )
+    return im
+
+
+def get_job_registry(request: Request):
+    """Return the process-wide ``JobRegistry`` (Phase 12h)."""
+    jr = getattr(request.app.state, "job_registry", None)
+    if jr is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Job registry not initialized",
+        )
+    return jr
