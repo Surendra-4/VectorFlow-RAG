@@ -193,8 +193,10 @@ def test_compatibility_reuse_for_matching_index(client):
     r = client.get("/api/v1/indexes/compat_idx/compatibility")
     assert r.status_code == 200
     report = r.json()["report"]
-    assert "compatible" in report
-    assert "action" in report and "message" in report
+    # Built over the same corpus with the same embedder → reusable, and a
+    # switch will succeed. "Check" and "Use" must agree.
+    assert report["compatible"] is True
+    assert report["action"] == "reuse"
 
 
 # --------------------------------------------------------------------------- #

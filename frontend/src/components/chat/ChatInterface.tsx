@@ -22,6 +22,36 @@ import { useStreamingAsk } from "@/lib/hooks/useStreamingAsk";
  * Phase 10 keeps this single-turn (no conversation history). Conversation
  * persistence is reserved for a later phase.
  */
+/**
+ * Render a chat generation error. The common case in local-first dev is that
+ * the LLM (Ollama) isn't running — retrieval still worked (sources show on the
+ * right), so we explain that and point at the two fixes instead of dumping a
+ * raw connection-pool stack trace.
+ */
+function ChatError({ message }: { message: string | null }) {
+  const msg = message ?? "";
+  const llmDown =
+    /11434|ollama|connection|unreachable|refused|max retries|\[error communicating/i.test(msg);
+
+  if (llmDown) {
+    return (
+      <div className="space-y-1 text-sm">
+        <p className="font-medium text-warning">
+          Retrieval worked, but no answer could be generated — the language model isn’t reachable.
+        </p>
+        <p className="text-fg-muted">
+          Start a local model with{" "}
+          <code className="rounded bg-surface-raised px-1">ollama serve</code> and{" "}
+          <code className="rounded bg-surface-raised px-1">ollama pull llama3.2:1b</code>, or pick a
+          model in <strong>Settings → Models</strong> (local or via an API key). Your retrieved
+          sources are shown on the right.
+        </p>
+      </div>
+    );
+  }
+  return <span className="text-danger">Error: {msg}</span>;
+}
+
 export function ChatInterface() {
   const [query, setQuery] = React.useState("");
   const [submittedQuery, setSubmittedQuery] = React.useState<string | null>(null);
@@ -124,9 +154,7 @@ export function ChatInterface() {
               {stream.state === "streaming" && stream.answer && (
                 <span className="ml-0.5 inline-block h-3 w-2 animate-pulse bg-fg-muted align-middle" aria-hidden="true" />
               )}
-              {stream.state === "error" && (
-                <span className="text-danger">Error: {stream.errorMessage}</span>
-              )}
+              {stream.state === "error" && <ChatError message={stream.errorMessage} />}
             </MessageBubble>
 
             <div className="flex items-center justify-between">
@@ -149,7 +177,7 @@ export function ChatInterface() {
       </div>
 
       {/* Right: source / citation column */}
-      <aside aria-label="Sources" className="space-y-3">
+      <aside aria-label="Sources" className="space-y-3" data-chat-sources>
         <Card>
           <CardTitle>Sources</CardTitle>
           <SourcePanel sources={stream.sources} />

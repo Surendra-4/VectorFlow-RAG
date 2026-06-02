@@ -7,6 +7,14 @@ import { metricsApi } from "@/lib/api";
 import { usePolling } from "@/lib/hooks/usePolling";
 import { formatLatencyMs, formatNumber, formatPercent, formatUptime } from "@/lib/utils/format";
 
+/** Sum every series of a labeled counter into a single total. */
+function sumLabeled(
+  data: { labeled_counters?: Record<string, Array<{ value: number }>> },
+  name: string
+): number {
+  return (data.labeled_counters?.[name] ?? []).reduce((acc, r) => acc + (r.value ?? 0), 0);
+}
+
 function statRow(label: string, value: React.ReactNode) {
   return (
     <div className="flex items-baseline justify-between border-b border-border py-2 last:border-b-0">
@@ -85,6 +93,17 @@ export function MetricsPanel() {
             ))}
           </tbody>
         </table>
+      </Card>
+
+      <Card className="md:col-span-2">
+        <CardTitle>Platform activity (models &amp; indexes)</CardTitle>
+        {statRow("Model switches", formatNumber(sumLabeled(data, "model_switch_total")))}
+        {statRow("Chat generations", formatNumber(sumLabeled(data, "provider_chat_total")))}
+        {statRow("Provider errors", formatNumber(sumLabeled(data, "provider_errors_total")))}
+        {statRow("Model installs", formatNumber(sumLabeled(data, "model_installs_total")))}
+        {statRow("Index builds", formatNumber(sumLabeled(data, "index_builds_total")))}
+        {statRow("Index switches", formatNumber(data.counters?.index_switch_total))}
+        {statRow("Benchmark runs", formatNumber(data.counters?.benchmark_runs_total))}
       </Card>
 
       <Card className="md:col-span-2">
