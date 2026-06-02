@@ -26,7 +26,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import PlainTextResponse
 
-from src.api.dependencies import get_pipeline, get_request_id
+from src.api.dependencies import (
+    get_index_manager,
+    get_pipeline,
+    get_request_id,
+)
 from src.observability import get_metrics, to_prometheus_text
 
 router = APIRouter(tags=["observability"])
@@ -115,6 +119,49 @@ def metrics_streams(request_id: str = Depends(get_request_id)) -> Dict[str, Any]
         "active_streams": snap["gauges"]["active_streams"],
         "stream_sessions_total": snap["counters"]["stream_sessions_total"],
         "stream_duration_ms": snap["histograms"]["stream_duration_ms"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12 — model + index lifecycle views
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/metrics/models")
+def metrics_models(request_id: str = Depends(get_request_id)) -> Dict[str, Any]:
+    """Provider + model lifecycle metrics."""
+    snap = get_metrics().snapshot()
+    lc = snap["labeled_counters"]
+    return {
+        "request_id": request_id,
+        "provider_ops_total": lc.get("provider_ops_total", []),
+        "provider_chat_total": lc.get("provider_chat_total", []),
+        "provider_errors_total": lc.get("provider_errors_total", []),
+        "model_installs_total": lc.get("model_installs_total", []),
+        "model_switch_total": lc.get("model_switch_total", []),
+    }
+
+
+@router.get("/metrics/indexes")
+def metrics_indexes(
+    manager=Depends(get_index_manager),
+    request_id: str = Depends(get_request_id),
+) -> Dict[str, Any]:
+    """Index lifecycle metrics + current active-index *state*.
+
+    The active index name is reported as a value (never a metric label) so
+    metric cardinality stays bounded regardless of how many indexes exist.
+    """
+    snap = get_metrics().snapshot()
+    return {
+        "request_id": request_id,
+        "active_index": manager.registry.active_name,
+        "index_count": len(manager.registry.names()),
+        "index_switch_total": snap["counters"].get("index_switch_total", 0),
+        "benchmark_runs_total": snap["counters"].get("benchmark_runs_total", 0),
+        "index_jobs_total": snap["labeled_counters"].get("index_jobs_total", []),
+        "index_builds_total": snap["labeled_counters"].get("index_builds_total", []),
+        "index_build_duration_ms": snap["labeled_histograms"].get("index_build_duration_ms", []),
     }
 
 
