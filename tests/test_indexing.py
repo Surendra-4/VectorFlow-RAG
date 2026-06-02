@@ -273,8 +273,16 @@ def test_train_index_noop_for_flat(manager):
     assert p.name == "flatidx"
 
 
-def test_benchmark_not_implemented_yet(manager):
-    v = _vectors(5, 8)
-    manager.create_index(_faiss_profile("b"), [f"d{i}" for i in range(5)], v)
-    with pytest.raises(NotImplementedError):
-        manager.benchmark_index("b")
+def test_benchmark_index_scores_against_truth(manager):
+    # benchmark_index is implemented in Phase 12i; flat index → perfect recall.
+    from src.indexing import exact_neighbors
+
+    v = _vectors(40, 8, seed=11)
+    ids = [f"c{i}" for i in range(40)]
+    manager.create_index(_faiss_profile("b", index_type="flat"),
+                         [f"d{i}" for i in range(40)], v, None, ids)
+    q = v[:8]
+    gt = exact_neighbors(v, q, k=5)
+    truth = [[ids[j] for j in row] for row in gt]
+    scores = manager.benchmark_index("b", q, truth, k=5)
+    assert scores["recall_at_k"] == 1.0

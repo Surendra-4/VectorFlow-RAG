@@ -87,3 +87,61 @@ def build_index_job(
         "vector_dimension": profile.vector_dimension,
         "made_active": make_active,
     }
+
+
+def benchmark_recipes_job(
+    ctx: JobContext,
+    *,
+    texts: Sequence[str],
+    recipe_ids: Sequence[str],
+    workdir,
+    embedder=None,
+    embeddings: Optional[Sequence[Sequence[float]]] = None,
+    ids: Optional[Sequence[str]] = None,
+    k: int = 10,
+    params: Optional[Dict[str, Any]] = None,
+    persist_path=None,
+    batch_size: int = 256,
+) -> Dict[str, Any]:
+    """Embed the corpus (if needed) and benchmark several recipes against an
+    exact Flat reference, reporting progress and honoring cancellation."""
+    from src.indexing.benchmark import benchmark_recipes
+
+    ctx.check_cancel()
+    n = len(texts)
+    if n == 0:
+        raise ValueError("Cannot benchmark on an empty corpus")
+
+    if embeddings is not None:
+        emb = np.asarray(embeddings, dtype=np.float32)
+        ctx.set_progress(30.0, f"Using {len(emb)} precomputed embeddings")
+    elif embedder is not None:
+        vectors: List[np.ndarray] = []
+        done = 0
+        for start in range(0, n, batch_size):
+            ctx.check_cancel()
+            batch = list(texts[start:start + batch_size])
+            vecs = embedder.encode(batch, show_progress=False, input_type="passage")
+            vectors.append(np.asarray(vecs, dtype=np.float32))
+            done += len(batch)
+            ctx.set_progress(30.0 * done / n, f"Embedded {done}/{n}")
+        emb = np.vstack(vectors)
+    else:
+        raise ValueError("benchmark_recipes_job requires `embeddings` or `embedder`")
+
+    def _progress(pct, msg):
+        ctx.check_cancel()
+        # Embedding was 0–30%; benchmarking spans 30–100%.
+        ctx.set_progress(30.0 + 0.7 * pct, msg)
+
+    results = benchmark_recipes(
+        emb, recipe_ids, workdir=workdir, ids=ids, k=k, params=params,
+        persist_path=persist_path, progress=_progress,
+    )
+    return {
+        "k": k,
+        "num_vectors": n,
+        "dimension": int(emb.shape[1]),
+        "results": [r.to_dict() for r in results],
+        "artifact": str(persist_path) if persist_path else None,
+    }

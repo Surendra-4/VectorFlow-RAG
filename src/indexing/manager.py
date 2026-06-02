@@ -321,6 +321,31 @@ class IndexManager:
                      name, profile.backend, profile.index_type)
         return profile
 
-    def benchmark_index(self, name: str, *args, **kwargs):
-        """Benchmark an index — implemented in Phase 12i."""
-        raise NotImplementedError("Index benchmarking lands in Phase 12i")
+    def benchmark_index(
+        self,
+        name: str,
+        queries: "np.ndarray",
+        truth_ids: Sequence[Sequence[str]],
+        k: int = 10,
+        *,
+        persist: bool = True,
+    ) -> Dict[str, Any]:
+        """Benchmark an existing named index against ground-truth neighbors.
+
+        Loads the index, scores its search against ``truth_ids`` (typically the
+        exact top-k from a Flat reference), stores the metrics on the profile,
+        and returns them. ``queries`` is an ``(n, dim)`` array.
+        """
+        from src.indexing.benchmark import evaluate_store
+
+        profile = self.registry.get(name)
+        store = self.load_index(name)
+        scores = evaluate_store(store, np.asarray(queries, dtype=np.float32), truth_ids, k)
+        scores["k"] = k
+        scores["benchmarked_at"] = time.time()
+        profile.metrics = {**(profile.metrics or {}), **scores}
+        if persist:
+            self.registry.update(profile)
+        logger.info("Benchmarked index %r: recall@%d=%.3f mrr=%.3f",
+                    name, k, scores["recall_at_k"], scores["mrr"])
+        return scores
