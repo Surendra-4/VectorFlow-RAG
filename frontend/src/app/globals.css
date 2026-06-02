@@ -2,34 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Theme tokens — light mode defaults */
+/* ───────────────────────────────────────────────────────────────────────────
+   Design tokens — "vector space" aurora palette.
+   Channels are space-separated RGB so Tailwind can apply <alpha-value>.
+   ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --bg: 250 251 252;            /* #fafbfc */
-  --surface: 255 255 255;       /* #ffffff */
-  --surface-raised: 248 250 252;
-  --border: 226 232 240;
-  --fg: 15 23 42;
-  --fg-muted: 71 85 105;
-  --accent: 37 99 235;
+  --bg: 248 249 252;            /* clean off-white */
+  --surface: 255 255 255;
+  --surface-raised: 246 248 252;
+  --border: 224 228 240;
+  --fg: 18 20 33;
+  --fg-muted: 96 104 128;
+  --accent: 99 91 246;          /* indigo */
   --accent-fg: 255 255 255;
+  --accent-2: 14 165 233;       /* cyan */
+  --accent-3: 168 85 247;       /* violet */
+  --glow: 124 108 255;
   --success: 16 185 129;
-  --warning: 245 158 11;
+  --warning: 217 119 6;
   --danger: 220 38 38;
+  --grid-line: 2 6 23;          /* faint grid in light mode */
+  --grid-alpha: 0.04;
 }
 
-/* Dark-mode overrides */
 .dark {
-  --bg: 15 23 42;               /* slate-900 */
-  --surface: 30 41 59;          /* slate-800 */
-  --surface-raised: 51 65 85;   /* slate-700 */
-  --border: 71 85 105;          /* slate-600 */
-  --fg: 248 250 252;            /* slate-50 */
-  --fg-muted: 148 163 184;
-  --accent: 96 165 250;
-  --accent-fg: 15 23 42;
+  --bg: 8 10 18;                /* deep ink */
+  --surface: 16 18 30;
+  --surface-raised: 23 26 42;
+  --border: 39 43 64;
+  --fg: 236 239 252;
+  --fg-muted: 150 158 188;
+  --accent: 124 108 255;        /* luminous indigo */
+  --accent-fg: 12 14 24;
+  --accent-2: 56 211 255;       /* cyan */
+  --accent-3: 192 132 255;      /* violet */
+  --glow: 124 108 255;
   --success: 52 211 153;
   --warning: 251 191 36;
   --danger: 248 113 113;
+  --grid-line: 148 163 220;
+  --grid-alpha: 0.05;
 }
 
 html,
@@ -38,15 +50,136 @@ body {
   color: rgb(var(--fg));
 }
 
-/* Disable transitions during theme switches to avoid color-bleed flashes. */
+body {
+  /* The animated aurora + grid live behind everything via fixed pseudo-layers
+     mounted by <AuroraBackground/>. Keep body transparent so they show. */
+  position: relative;
+}
+
+/* Smooth, deliberate theme cross-fade (suppressed during the toggle itself). */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
 .no-transition,
 .no-transition * {
   transition: none !important;
 }
 
-/* Accessible focus ring for keyboard users; tailwind's default ring works
-   but this guarantees consistent color across components. */
+/* ───────────────────────────────────────────────────────────────────────────
+   Component utilities
+   ─────────────────────────────────────────────────────────────────────────── */
+@layer components {
+  /* Frosted-glass surface used by cards, header, panels. */
+  .glass {
+    background-color: rgb(var(--surface) / 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgb(var(--border) / 0.7);
+  }
+
+  /* Animated aurora gradient clipped to text. */
+  .gradient-text {
+    background-image: linear-gradient(
+      100deg,
+      rgb(var(--accent-3)),
+      rgb(var(--accent)),
+      rgb(var(--accent-2)),
+      rgb(var(--accent))
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: gradient-x 6s ease infinite;
+  }
+
+  /* A 1px gradient hairline border via mask (no double-border seams). */
+  .border-gradient {
+    position: relative;
+  }
+  .border-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      130deg,
+      rgb(var(--accent-3) / 0.7),
+      rgb(var(--accent) / 0.4) 40%,
+      transparent 70%
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Shimmer sweep for skeleton loaders. */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--fg) / 0.08),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Scrollbar, selection, focus
+   ─────────────────────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--accent) / 0.6);
+  background-clip: content-box;
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.28);
+  color: rgb(var(--fg));
+}
+
 :focus-visible {
   outline: 2px solid rgb(var(--accent));
   outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Respect users who prefer less motion — kill animations + transforms.
+   ─────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
