@@ -1,15 +1,23 @@
 import { MetricsPanel } from "@/components/dashboard/MetricsPanel";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Reveal } from "@/components/ui/motion";
+import { ActivityIcon } from "@/components/ui/icons";
+
+export const metadata = { title: "Dashboard" };
 
 export default function DashboardPage() {
   return (
-    <section aria-label="Dashboard" className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-fg-muted">
-          Live process metrics. Polls every 5 seconds; pauses when the tab is hidden.
-        </p>
-      </header>
-      <MetricsPanel />
+    <section aria-label="Dashboard" className="space-y-8">
+      <PageHeader
+        eyebrow="Observability"
+        title="Live"
+        highlight="metrics"
+        icon={<ActivityIcon />}
+        description="Process metrics in real time — throughput, latency percentiles, cache, streams, and platform activity. Polls every 5 seconds; pauses when the tab is hidden."
+      />
+      <Reveal>
+        <MetricsPanel />
+      </Reveal>
     </section>
   );
 }

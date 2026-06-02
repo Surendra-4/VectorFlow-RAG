@@ -3,6 +3,8 @@
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBox } from "@/components/ui/ErrorBox";
+import { StatCard } from "@/components/ui/StatCard";
+import { ActivityIcon, SearchIcon, SparkIcon, UploadIcon } from "@/components/ui/icons";
 import { metricsApi } from "@/lib/api";
 import { usePolling } from "@/lib/hooks/usePolling";
 import { formatLatencyMs, formatNumber, formatPercent, formatUptime } from "@/lib/utils/format";
@@ -36,8 +38,43 @@ export function MetricsPanel() {
   const ingestHist = data.histograms?.ingest_latency_ms;
   const streamHist = data.histograms?.stream_duration_ms;
 
+  const retrievals = data.counters?.retrievals_total ?? 0;
+  const cacheHits = data.counters?.cache_hits_total ?? 0;
+  const hitRatio = retrievals ? cacheHits / retrievals : 0;
+
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4">
+      {/* Headline metrics — animated count-up tiles. */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Retrievals"
+          value={retrievals}
+          icon={<SearchIcon />}
+          hint="hybrid searches served"
+        />
+        <StatCard
+          label="Chunks ingested"
+          value={data.counters?.chunks_ingested_total ?? 0}
+          icon={<UploadIcon />}
+          tone="success"
+        />
+        <StatCard
+          label="Cache hit ratio"
+          value={hitRatio * 100}
+          format={(n) => `${n.toFixed(0)}%`}
+          icon={<SparkIcon />}
+          tone="warning"
+          hint={`${formatNumber(cacheHits)} hits`}
+        />
+        <StatCard
+          label="Uptime (s)"
+          value={Math.floor(data.uptime_s ?? 0)}
+          icon={<ActivityIcon />}
+          hint={formatUptime(data.uptime_s)}
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card>
         <CardTitle>Throughput</CardTitle>
         {statRow("Retrievals", formatNumber(data.counters?.retrievals_total))}
@@ -120,6 +157,7 @@ export function MetricsPanel() {
         {statRow("Recent traces buffer", formatNumber(data.ring_buffer_sizes?.recent_traces))}
         {statRow("Recent errors buffer", formatNumber(data.ring_buffer_sizes?.recent_errors))}
       </Card>
+      </div>
     </div>
   );
 }
