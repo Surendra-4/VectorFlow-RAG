@@ -66,6 +66,8 @@ class StatusResponse(BaseModel):
     corpus_fingerprint: Optional[str]
     rrf_k: int
     candidates_per_modality: int
+    # Phase 13: which named index is serving live retrieval (None = default).
+    active_index_name: Optional[str] = None
     uptime_s: float
     request_id: str
 
