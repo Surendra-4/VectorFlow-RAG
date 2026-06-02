@@ -13,6 +13,15 @@ Public surface:
 * :class:`IndexManager`
 """
 
+from src.indexing.compatibility import (
+    Action,
+    CompatibilityIssue,
+    CompatibilityReport,
+    IndexTargetConfig,
+    Severity,
+    check_compatibility,
+    target_from_index_settings,
+)
 from src.indexing.manager import IndexManager
 from src.indexing.profile import CompatibilitySignature, IndexProfile
 from src.indexing.recipes import (
@@ -33,11 +42,18 @@ from src.indexing.registry import (
 )
 
 __all__ = [
+    "Action",
+    "CompatibilityIssue",
+    "CompatibilityReport",
     "CompatibilitySignature",
     "IndexManager",
     "IndexProfile",
     "IndexRegistry",
     "IndexRegistryError",
+    "IndexTargetConfig",
+    "Severity",
+    "check_compatibility",
+    "target_from_index_settings",
     "RECIPES",
     "RecipeError",
     "RecipeSpec",
