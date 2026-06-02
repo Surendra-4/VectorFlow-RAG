@@ -10,6 +10,43 @@ retrieval quality must not regress** — held at every phase.
 
 ---
 
+## [0.4.0] — Live named-index switching (Phase 13)
+
+Closes the loop on Phase 12's named indexes: an index you build/benchmark can
+now actually **serve live retrieval**, switched at runtime — safely.
+
+### Phase 13a — Pipeline activation with identity retention
+- `RAGPipeline` retains chunk records (text/chunk_id/metadata) via
+  `iter_chunk_records()`, so a named index can be built with *identical*
+  identity + provenance — the precondition for a correct hot-swap (RRF joins on
+  `chunk_id`; citations read metadata).
+- `activate_named_index(name, store)` / `activate_default_index()` swap only the
+  vector half of hybrid retrieval, rebuilding `HybridRetriever` over the new
+  store while keeping BM25 (same `chunk_id` set). `_default_vector_store` handle
+  retained at ingestion; re-ingestion resets activation. `active_index_name`
+  folded into the retrieval-cache key.
+
+### Phase 13b — Compatibility-gated switch API
+- `create_index` builds from the live chunk records (real ids + metadata).
+- `POST /indexes/{name}/switch` runs a switch-compatibility check (live embedder
+  model + dim + corpus fingerprint vs the index); on success activates it in the
+  pipeline (ingest-lock-serialized) + sets the registry active pointer; on
+  mismatch returns a structured **409** (`code=index_incompatible`) with the full
+  report in `details`. `POST /indexes/activate-default` reverts. `/status`
+  exposes `active_index_name`.
+
+### Phase 13c — Frontend active-index UX
+- IndexesTab shows which index serves live retrieval, a "Use default retrieval"
+  revert, and surfaces the 409 compatibility report inline ("create a new
+  index?") instead of a raw error.
+
+### Verification
+- Default path (`active_index_name=None`) is byte-identical — English retrieval
+  parity preserved. New tests: 6 pipeline-activation + 3 switch/compat API + 4
+  frontend component. Frontend suite 74 passed; tsc clean; build OK.
+
+---
+
 ## [0.2.0] — Foundation → Multilingual platform
 
 ### Phase 0 — Foundation

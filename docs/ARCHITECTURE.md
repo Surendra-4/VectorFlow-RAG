@@ -313,6 +313,17 @@ cancellation, replayable SSE streaming, and bounded history. Index creation and
 benchmarking are submitted as jobs; the API returns `202 + job_id` and the UI
 streams `/jobs/{id}/stream`.
 
+**Live index switching (Phase 13).** A named index can be promoted to serve
+live retrieval at runtime. Because hybrid retrieval joins vector + BM25 on
+`chunk_id` and citations read metadata, a named index is built from the
+pipeline's *actual* chunk records (identical ids + provenance), and the switch
+swaps only the vector half of `HybridRetriever` while keeping BM25. The switch
+is **compatibility-gated**: the index must match the live embedder (model +
+dimension) and corpus fingerprint, else the API returns a structured `409` with
+the compatibility report ("create a new index?") instead of switching.
+`activate_default_index()` reverts to the ingestion-time store; re-ingestion
+resets activation; `active_index_name` participates in the retrieval-cache key.
+
 All of this is additive: new routes under `/api/v1/models`, `/config/runtime`,
 `/indexes`, `/jobs`; existing routes and default behavior are unchanged.
 
