@@ -81,6 +81,75 @@ retrieval quality must not regress** — held at every phase.
 
 ---
 
+## [0.3.0] — Configurable retrieval platform (Phase 12)
+
+Transforms the app into a runtime-configurable platform: switch chat models
+(local **or** API) without a restart, manage offline models, and build/compare/
+switch named FAISS indexes safely. **Default settings behave identically to
+0.2.0** — every new subsystem is opt-in and the English-parity gate held.
+
+### Phase 12a–b — Model provider abstraction
+- `src/providers/`: `ModelProvider` ABC + `ProviderModel`/`ProviderCapabilities`/
+  `ConnectionStatus` metadata; `ChatModelConfig`/`EmbeddingModelConfig`/
+  `RerankerModelConfig` (no `api_key` field by design); typed `ProviderError`
+  hierarchy. `OllamaProvider` (chat delegates to `OllamaClient` for byte-parity)
+  + offline catalog/install/delete. Online providers over `requests` (no SDKs):
+  OpenAI/Groq/OpenRouter (OpenAI-compatible base), Anthropic, Gemini.
+- `SecretStore`: backend-only, Fernet-encrypted at rest (graceful fallback),
+  `0600` perms, redaction — keys never reach the frontend or logs.
+
+### Phase 12c–d — Runtime config + model-management API
+- `RuntimeConfigStore`: mutable layer over the immutable env `Settings`,
+  separating **live-query** settings (applied immediately) from
+  **index-construction** settings (staged — never a silent rebuild).
+- `RAGPipeline.set_chat_provider()` / `apply_live_settings()` hot-swap the
+  provider + live knobs; settings deep-copied lazily so the singleton/baseline
+  is untouched.
+- API: `/models/*` (providers, offline installed/catalog/install-SSE/delete,
+  online key mgmt + validate + list, active, select), `/config/runtime/*`.
+  `ProviderError` → structured 401/404/503/502; keys never echoed.
+
+### Phase 12e–g — Named indexes, recipes, compatibility
+- `IndexProfile` + `IndexRegistry` (named indexes, active pointer, persisted)
+  + `IndexManager` (create/load/switch/delete/export/import; zip-slip guarded).
+- FAISS recipe catalog (Flat/HNSW/IVF/PQ + IVF-PQ/IVF-HNSW/HNSW-PQ/OPQ-IVF-PQ/
+  IMI/IndexRefineFlat/Multi-D-ADC) with validated params; `validate_recipe`
+  checks statically **and** by constructing in FAISS; memory/latency/training
+  estimates. `FAISSVectorStore` gains `factory_string` + nprobe (legacy path
+  unchanged). `check_compatibility` grades changes BLOCKING/REBUILD/INFO and
+  drives the "create a new index?" UX — never mutates silently.
+
+### Phase 12h–i — Background jobs + benchmarking
+- `src/jobs/`: `Job`/`JobContext`/`JobRegistry` over a thread pool — progress,
+  cooperative cancellation, replayable SSE streaming, bounded history. FAISS
+  builds/training run off the HTTP worker.
+- Benchmarking: Recall@K/MRR/latency/QPS/size vs an exact Flat reference;
+  multi-recipe compare; schema-versioned artifacts. API: `/indexes/*`
+  (recipes/validate/list/create-job/switch/delete/compatibility/benchmark) +
+  `/jobs/*` (list/get/stream/cancel).
+
+### Phase 12j — Observability sweep
+- New bounded-cardinality metrics: provider ops/chat/errors, model installs/
+  switches, index jobs/builds (+duration), index switches, benchmark runs.
+  Active-index name reported as a **state value**, never a label. Prometheus
+  exporter + `/metrics/models` + `/metrics/indexes` views.
+
+### Phase 12k — Frontend settings dashboard
+- Typed client (`models`/`runtimeConfig`/`indexes`/`jobs` + SSE consumer),
+  `useJobProgress` hook, UI primitives (Select/Toggle/Tabs/ProgressBar).
+- Tabs: **Models** (local Ollama install/select OR closed-source via API key),
+  **Retrieval** (live toggles + fusion knobs), **Indexes** (named-index list +
+  health, Basic/Advanced builder with live validation, compatibility warnings,
+  build progress, benchmark comparison). Theme/responsive/a11y preserved.
+
+### Verification
+- Backend: full suite on ChromaDB + FAISS subset; ~190 new Phase-12 tests.
+  **English Recall@5 unchanged under default settings.** Existing API contracts
+  unchanged (additive routes only).
+- Frontend: 70 Vitest tests (8 new); clean `tsc --noEmit`; production build OK.
+
+---
+
 ## Cleanup pass (pre-finalization)
 - Removed a stale pre-fix benchmark snapshot that would corrupt regression comparison.
 - Moved unused deps (`mlflow`, `dagshub`, `pandas`, `dataclasses-json`) to a commented optional block.
