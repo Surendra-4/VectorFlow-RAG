@@ -24,13 +24,18 @@ export interface StatusResponse {
   app_version: string;
   vector_store_backend: string;
   embedder_model: string;
+  embedder_dimension?: number;
+  embedder_device?: string | null;
   reranker_enabled: boolean;
   reranker_model?: string | null;
   expansion_enabled: boolean;
+  expansion_strategies?: string[];
   cache_backend: string;
   documents_ingested: number;
   chunks_indexed: number;
   corpus_fingerprint?: string | null;
+  rrf_k?: number;
+  candidates_per_modality?: number;
   uptime_s: number;
   request_id: string;
 }
@@ -207,4 +212,232 @@ export interface RecentTracesResponse {
   traces: Array<Record<string, unknown>>;
   limit: number;
   request_id: string;
+}
+
+// ---- Phase 12: providers & models ------------------------------------ //
+
+export interface ProviderCapabilities {
+  name: string;
+  label: string;
+  location: "offline" | "online";
+  requires_api_key: boolean;
+  supports_chat: boolean;
+  supports_streaming: boolean;
+  supports_model_listing: boolean;
+  supports_install: boolean;
+  supports_embeddings: boolean;
+  base_url_configurable: boolean;
+  default_base_url?: string | null;
+  docs_url?: string | null;
+  notes: string;
+  key_configured: boolean;
+  key_hint?: string | null;
+}
+
+export interface ProviderModel {
+  id: string;
+  kind: "chat" | "embedding" | "reranker";
+  label?: string | null;
+  context_window?: number | null;
+  supports_streaming: boolean;
+  supports_tools: boolean;
+  multilingual: boolean;
+  installed?: boolean | null;
+  size_bytes?: number | null;
+  parameter_size?: string | null;
+  quantization?: string | null;
+  ram_estimate_bytes?: number | null;
+  pricing?: Record<string, unknown> | null;
+  description?: string | null;
+}
+
+export interface ProvidersResponse {
+  providers: ProviderCapabilities[];
+  request_id: string;
+}
+
+export interface ModelListResponse {
+  provider: string;
+  models: ProviderModel[];
+  request_id: string;
+}
+
+export interface ApiKeyStatusResponse {
+  provider: string;
+  configured: boolean;
+  hint?: string | null;
+  request_id: string;
+}
+
+export interface ConnectionValidationResponse {
+  provider: string;
+  ok: boolean;
+  message: string;
+  models_available?: number | null;
+  latency_ms?: number | null;
+  request_id: string;
+}
+
+export interface ActiveModelResponse {
+  provider: string;
+  model: string;
+  base_url?: string | null;
+  location?: string | null;
+  request_id: string;
+}
+
+export interface InstallProgressEvent {
+  status: string;
+  total?: number | null;
+  completed?: number | null;
+  percent?: number | null;
+  digest?: string | null;
+}
+
+// ---- Phase 12: runtime config ---------------------------------------- //
+
+export interface RuntimeConfigResponse {
+  version: number;
+  live: Record<string, unknown>;
+  staged_index: Record<string, unknown>;
+  active_index: Record<string, unknown>;
+  request_id: string;
+}
+
+export interface StagedIndexResponse {
+  staged_index: Record<string, unknown>;
+  rebuild_required: boolean;
+  request_id: string;
+}
+
+// ---- Phase 12: indexes & recipes ------------------------------------- //
+
+export interface RecipeParam {
+  name: string;
+  label: string;
+  kind: string;
+  default: number;
+  minimum: number;
+  maximum: number;
+  description: string;
+  group: string;
+}
+
+export interface RecipeSpec {
+  id: string;
+  label: string;
+  mode: "basic" | "advanced";
+  requires_training: boolean;
+  description: string;
+  params: RecipeParam[];
+  latency_class: string;
+  training_cost: string;
+  supports_refine: boolean;
+}
+
+export interface RecipeEstimate {
+  memory_bytes: number;
+  bytes_per_vector: number;
+  training_cost: string;
+  latency_class: string;
+  needs_training: boolean;
+  min_training_points?: number | null;
+}
+
+export interface RecipeValidation {
+  ok: boolean;
+  recipe: string;
+  factory_string: string;
+  resolved_params: Record<string, number>;
+  errors: Array<{ field: string; message: string }>;
+  warnings: string[];
+  estimate?: RecipeEstimate | null;
+}
+
+export interface IndexProfile {
+  name: string;
+  backend: string;
+  index_type: string;
+  embedding_model: string;
+  embedding_provider: string;
+  vector_dimension: number;
+  build_params: Record<string, number>;
+  search_params: Record<string, number>;
+  corpus_fingerprint?: string | null;
+  chunk_size: number;
+  chunk_overlap: number;
+  normalize: boolean;
+  num_vectors: number;
+  metrics: Record<string, unknown>;
+  created_at: number;
+  last_used: number;
+  description: string;
+  compatibility_info: Record<string, unknown>;
+}
+
+export interface IndexListResponse {
+  indexes: IndexProfile[];
+  active?: string | null;
+  request_id: string;
+}
+
+export interface CompatibilityIssue {
+  field: string;
+  severity: "blocking" | "rebuild" | "info";
+  message: string;
+  index_value?: unknown;
+  target_value?: unknown;
+}
+
+export interface CompatibilityReport {
+  index_name: string;
+  compatible: boolean;
+  action: "reuse" | "rebuild" | "create_new";
+  message: string;
+  issues: CompatibilityIssue[];
+}
+
+// ---- Phase 12: jobs --------------------------------------------------- //
+
+export interface JobState {
+  id: string;
+  type: string;
+  label: string;
+  status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+  progress: number;
+  message: string;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  created_at: number;
+  started_at?: number | null;
+  finished_at?: number | null;
+  cancel_requested: boolean;
+  history?: Array<Record<string, unknown>>;
+}
+
+export interface JobAcceptedResponse {
+  job_id: string;
+  type: string;
+  status: string;
+  request_id: string;
+}
+
+export interface BenchmarkResultRow {
+  index_name: string;
+  recipe: string;
+  factory_string: string;
+  k: number;
+  num_vectors: number;
+  dimension: number;
+  recall_at_k: number;
+  mrr: number;
+  latency_ms_mean: number;
+  latency_ms_p50: number;
+  latency_ms_p95: number;
+  queries_per_sec: number;
+  build_seconds: number;
+  ingest_vectors_per_sec: number;
+  index_size_bytes: number;
+  estimated_memory_bytes: number;
+  timestamp: number;
 }
