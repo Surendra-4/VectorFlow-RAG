@@ -36,6 +36,7 @@ export interface StatusResponse {
   corpus_fingerprint?: string | null;
   rrf_k?: number;
   candidates_per_modality?: number;
+  active_index_name?: string | null;
   uptime_s: number;
   request_id: string;
 }

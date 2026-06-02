@@ -61,14 +61,23 @@ export function benchmarkRecipes(
   return apiFetch("/api/v1/indexes/benchmark", { method: "POST", body, signal });
 }
 
-export function switchIndex(
-  name: string,
-  signal?: AbortSignal
-): Promise<{ index_name: string; action: string; active?: string | null; request_id: string }> {
+export interface IndexActionResult {
+  index_name: string;
+  action: string;
+  active?: string | null;
+  request_id: string;
+}
+
+export function switchIndex(name: string, signal?: AbortSignal): Promise<IndexActionResult> {
   return apiFetch(`/api/v1/indexes/${encodeURIComponent(name)}/switch`, {
     method: "POST",
     signal,
   });
+}
+
+/** Revert live retrieval to the default (ingestion-time) store. */
+export function activateDefault(signal?: AbortSignal): Promise<IndexActionResult> {
+  return apiFetch("/api/v1/indexes/activate-default", { method: "POST", signal });
 }
 
 export function deleteIndex(

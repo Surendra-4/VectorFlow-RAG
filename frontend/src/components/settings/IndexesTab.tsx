@@ -7,7 +7,7 @@ import { Card, CardTitle } from "@/components/ui/Card";
 import { ErrorBox } from "@/components/ui/ErrorBox";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Spinner } from "@/components/ui/Spinner";
-import { indexesApi, statusApi } from "@/lib/api";
+import { ApiError, indexesApi, statusApi } from "@/lib/api";
 import type { CompatibilityReport, IndexProfile } from "@/lib/api/types";
 import { useJobProgress } from "@/lib/hooks/useJobProgress";
 import { formatNumber } from "@/lib/utils/format";
@@ -17,6 +17,8 @@ import { BenchmarkPanel } from "./BenchmarkPanel";
 export function IndexesTab() {
   const [indexes, setIndexes] = React.useState<IndexProfile[]>([]);
   const [active, setActive] = React.useState<string | null>(null);
+  // Which index is actually serving live retrieval (null = default store).
+  const [liveActive, setLiveActive] = React.useState<string | null>(null);
   const [dim, setDim] = React.useState(0);
   const [nVectors, setNVectors] = React.useState(0);
   const [error, setError] = React.useState<Error | null>(null);
@@ -38,6 +40,7 @@ export function IndexesTab() {
       if (status) {
         setDim(status.embedder_dimension ?? 0);
         setNVectors(status.chunks_indexed ?? 0);
+        setLiveActive(status.active_index_name ?? null);
       }
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -59,8 +62,32 @@ export function IndexesTab() {
 
   const switchTo = async (name: string) => {
     setBusy(true);
+    setError(null);
     try {
       await indexesApi.switchIndex(name);
+      await load();
+    } catch (e) {
+      // A 409 carries the compatibility report ("create a new index?").
+      if (e instanceof ApiError && e.status === 409) {
+        const report = (e.details?.compatibility as CompatibilityReport) ?? null;
+        if (report) {
+          setCompat((prev) => ({ ...prev, [name]: report }));
+        } else {
+          setError(e);
+        }
+      } else {
+        setError(e instanceof Error ? e : new Error(String(e)));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const useDefault = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await indexesApi.activateDefault();
       await load();
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
@@ -96,6 +123,25 @@ export function IndexesTab() {
     <div className="space-y-4">
       <ErrorBox error={error} onRetry={load} />
 
+      {/* Which index is serving live retrieval right now. */}
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm">
+            <span className="text-fg-muted">Serving live retrieval: </span>
+            {liveActive ? (
+              <Badge tone="success">{liveActive}</Badge>
+            ) : (
+              <Badge tone="neutral">default index</Badge>
+            )}
+          </div>
+          {liveActive && (
+            <Button size="sm" variant="secondary" disabled={busy} onClick={useDefault}>
+              Use default retrieval
+            </Button>
+          )}
+        </div>
+      </Card>
+
       <Card>
         <div className="mb-2 flex items-center justify-between">
           <CardTitle>Named indexes</CardTitle>
@@ -118,7 +164,7 @@ export function IndexesTab() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{idx.name}</span>
-                        {idx.name === active && <Badge tone="success">active</Badge>}
+                        {idx.name === liveActive && <Badge tone="success">live</Badge>}
                         <Badge tone="neutral">{idx.backend}</Badge>
                         <Badge tone="accent">{idx.index_type}</Badge>
                       </div>
@@ -132,7 +178,7 @@ export function IndexesTab() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={busy || idx.name === active}
+                        disabled={busy || idx.name === liveActive}
                         onClick={() => switchTo(idx.name)}
                       >
                         Use
