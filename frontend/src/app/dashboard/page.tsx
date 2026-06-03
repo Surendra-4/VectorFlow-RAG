@@ -1,4 +1,5 @@
 import { MetricsPanel } from "@/components/dashboard/MetricsPanel";
+import { UserStatsPanel } from "@/components/dashboard/UserStatsPanel";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Reveal } from "@/components/ui/motion";
 import { ActivityIcon } from "@/components/ui/icons";
@@ -13,9 +14,12 @@ export default function DashboardPage() {
         title="Live"
         highlight="metrics"
         icon={<ActivityIcon />}
-        description="Process metrics in real time — throughput, latency percentiles, cache, streams, and platform activity. Polls every 5 seconds; pauses when the tab is hidden."
+        description="Your personal activity plus live process metrics — throughput, latency percentiles, cache, streams, and platform activity."
       />
       <Reveal>
+        <UserStatsPanel />
+      </Reveal>
+      <Reveal delay={80}>
         <MetricsPanel />
       </Reveal>
     </section>

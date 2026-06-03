@@ -1,11 +1,13 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "@/lib/hooks/useTheme";
 import { cn } from "@/lib/utils/cn";
 import { LogoMark, Wordmark } from "@/components/brand/Logo";
 import { MoonIcon, NAV_ICONS, SunIcon, SystemIcon } from "@/components/ui/icons";
+import { useAuth } from "@/lib/auth/AuthContext";
 
 const NAV_ITEMS = [
   { href: "/", label: "Chat" },
@@ -61,7 +63,10 @@ export function Header() {
           })}
         </nav>
 
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <UserMenu />
+        </div>
       </div>
 
       {/* Mobile nav — icon rail */}
@@ -96,6 +101,69 @@ const THEMES = [
   { id: "dark", Icon: MoonIcon, label: "Dark" },
   { id: "system", Icon: SystemIcon, label: "System" },
 ] as const;
+
+function UserMenu() {
+  const { user, logout } = useAuth();
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  if (!user) return null;
+  const initials = (user.name || user.email).slice(0, 2).toUpperCase();
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="grid h-8 w-8 place-items-center overflow-hidden rounded-full border border-border/70 bg-accent/15 text-xs font-semibold text-accent transition-transform hover:scale-105"
+      >
+        {user.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          initials
+        )}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 mt-2 w-56 origin-top-right animate-scale-in rounded-xl border border-border/70 bg-surface/95 p-1.5 shadow-lift backdrop-blur"
+        >
+          <div className="border-b border-border/60 px-3 py-2">
+            <p className="truncate text-sm font-medium">{user.name || user.email}</p>
+            <p className="truncate text-xs text-fg-muted">{user.email}</p>
+          </div>
+          <Link
+            href="/dashboard"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="block rounded-lg px-3 py-2 text-sm text-fg-muted hover:bg-surface-raised hover:text-fg"
+          >
+            Dashboard & stats
+          </Link>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { setOpen(false); logout(); }}
+            className="block w-full rounded-lg px-3 py-2 text-left text-sm text-danger hover:bg-danger/10"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();

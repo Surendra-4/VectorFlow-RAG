@@ -1,6 +1,7 @@
 // src/lib/api/client.ts
 
 import { ApiError } from "./errors";
+import { clearToken, getToken } from "@/lib/auth/token";
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
 
@@ -61,6 +62,13 @@ export async function apiFetch<T = unknown>(
   const url = `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 
   const headers: Record<string, string> = { ...init.headers };
+
+  // Attach the bearer token (if signed in) unless the caller set Authorization.
+  if (typeof window !== "undefined" && !("Authorization" in headers) && !("authorization" in headers)) {
+    const token = getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
   let body: BodyInit | undefined;
 
   if (init.body !== undefined) {
@@ -113,6 +121,8 @@ export async function apiFetch<T = unknown>(
   }
 
   if (!res.ok) {
+    // An expired/invalid token → drop it so the app falls back to the login gate.
+    if (res.status === 401 && typeof window !== "undefined") clearToken();
     const errorBody = (parsed as Record<string, unknown> | undefined) ?? {};
     throw new ApiError({
       status: res.status,
