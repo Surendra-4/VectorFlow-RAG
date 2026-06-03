@@ -140,7 +140,9 @@ def my_stats(
     db: Session = Depends(get_db_session),
     request_id: str = Depends(get_request_id),
 ) -> UserStatsResponse:
-    stats = service.ensure_stats(db, user)
+    # get_current_user returns a detached instance — re-attach by id.
+    u = service.get_user(db, user.id)
+    stats = service.ensure_stats(db, u)
     db.commit()
     return UserStatsResponse(stats=stats.to_dict(), request_id=request_id)
 
@@ -151,9 +153,10 @@ def reset_my_stats(
     db: Session = Depends(get_db_session),
     request_id: str = Depends(get_request_id),
 ) -> UserStatsResponse:
-    stats = service.reset_user_stats(db, user)
+    u = service.get_user(db, user.id)
+    stats = service.reset_user_stats(db, u)
     db.commit()
-    logger.info("User %s reset their dashboard stats", user.email)
+    logger.info("User %s reset their dashboard stats", u.email)
     return UserStatsResponse(stats=stats.to_dict(), request_id=request_id)
 
 

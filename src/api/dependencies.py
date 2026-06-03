@@ -112,12 +112,14 @@ def get_db_session():
     yield from get_db()
 
 
-def get_optional_user(request: Request, db: "Session" = Depends(get_db_session)) -> "Optional[User]":
+def get_optional_user(request: Request) -> "Optional[User]":
     """Return the authenticated user from a Bearer JWT, or None.
 
-    Never raises — endpoints that work for both anonymous and authenticated
-    callers (search/ask/ingest) use this to attribute per-user stats when a
-    token is present, without forcing auth in local/test mode.
+    Lazy by design: the anonymous hot path (search/ask with no token) never
+    opens a DB session. When a token is present we load the user in a
+    short-lived session; ``expire_on_commit=False`` keeps scalar attributes
+    usable after it closes (the returned instance is detached — read its ``id``
+    / ``to_public()``; routes that mutate re-fetch by id). Never raises.
     """
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
@@ -130,9 +132,17 @@ def get_optional_user(request: Request, db: "Session" = Depends(get_db_session))
     user_id = payload.get("sub")
     if not user_id:
         return None
-    from src.db.models import User
+    try:
+        from src.db.models import User
+        from src.db.session import get_sessionmaker
 
-    return db.get(User, user_id)
+        db = get_sessionmaker()()
+        try:
+            return db.get(User, user_id)
+        finally:
+            db.close()
+    except Exception:  # pragma: no cover - auth lookup must never 500 a request
+        return None
 
 
 def get_current_user(user: "Optional[User]" = Depends(get_optional_user)) -> "User":
