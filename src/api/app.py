@@ -90,6 +90,15 @@ def _build_lifespan(settings: Settings, init_pipeline: bool):
         app.state.job_registry = JobRegistry()
         _wire_job_metrics(app.state.job_registry)
 
+        # Ensure the users + stats tables exist (Phase 14). Best-effort: a DB
+        # outage must not block the rest of the service from starting.
+        try:
+            from src.db.session import init_db
+
+            init_db()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("DB init skipped/failed: %s", exc)
+
         if init_pipeline:
             # Lazy import — keeps app construction cheap during test setup
             # where callers always override the pipeline via DI.
@@ -180,6 +189,7 @@ def create_app(
     from src.api.routes import (
         admin,
         ask,
+        auth,
         cache,
         config as config_routes,
         documents,
@@ -194,6 +204,7 @@ def create_app(
     )
 
     app.include_router(health.router)  # at root, not under /api/v1/
+    app.include_router(auth.router, prefix="/api/v1")
     app.include_router(status.router, prefix="/api/v1")
     app.include_router(ingest.router, prefix="/api/v1")
     app.include_router(search.router, prefix="/api/v1")

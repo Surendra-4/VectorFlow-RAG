@@ -19,11 +19,14 @@ Concurrency model:
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import Depends, HTTPException, Request, status
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from src.db.models import User
     from src.rag_pipeline import RAGPipeline
 
 
@@ -95,3 +98,68 @@ def get_job_registry(request: Request):
             detail="Job registry not initialized",
         )
     return jr
+
+
+# --------------------------------------------------------------------------- #
+# Auth (Phase 14)
+# --------------------------------------------------------------------------- #
+
+
+def get_db_session():
+    """FastAPI dependency yielding a DB session (re-exported for routes)."""
+    from src.db.session import get_db
+
+    yield from get_db()
+
+
+def get_optional_user(request: Request, db: "Session" = Depends(get_db_session)) -> "Optional[User]":
+    """Return the authenticated user from a Bearer JWT, or None.
+
+    Never raises — endpoints that work for both anonymous and authenticated
+    callers (search/ask/ingest) use this to attribute per-user stats when a
+    token is present, without forcing auth in local/test mode.
+    """
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    from src.auth.security import decode_token
+
+    payload = decode_token(header[len("Bearer "):].strip())
+    if not payload:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    from src.db.models import User
+
+    return db.get(User, user_id)
+
+
+def get_current_user(user: "Optional[User]" = Depends(get_optional_user)) -> "User":
+    """Require a valid authenticated user (401 otherwise)."""
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+def require_user_if_enabled(
+    user: "Optional[User]" = Depends(get_optional_user),
+) -> "Optional[User]":
+    """Enforce auth only when ``settings.auth.required`` is True (production).
+
+    Local/dev/tests (required=False) stay open and simply attribute stats when a
+    token is present. Production flips one flag to gate the data endpoints.
+    """
+    from src.config import get_settings
+
+    if get_settings().auth.required and user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user

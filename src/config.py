@@ -285,8 +285,9 @@ class AuthSettings(BaseModel):
     # the data endpoints require a valid token.
     required: bool = False
 
-    # JWT signing. PRODUCTION MUST override jwt_secret with a long random value.
-    jwt_secret: str = "dev-insecure-change-me"
+    # JWT signing. PRODUCTION MUST override jwt_secret with a long random value
+    # (e.g. `python -c "import secrets;print(secrets.token_urlsafe(48))"`).
+    jwt_secret: str = "dev-insecure-change-me-in-production-this-is-not-a-secret"
     jwt_algorithm: str = "HS256"
     jwt_expiry_minutes: int = 60 * 24 * 7  # 7 days
 
