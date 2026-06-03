@@ -264,6 +264,53 @@ class APISettings(BaseModel):
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
 
+class DatabaseSettings(BaseModel):
+    """Relational DB for users + per-user stats (Phase 14).
+
+    ``url`` is a SQLAlchemy URL. Defaults to a local SQLite file so the app
+    works with zero setup; production sets ``DATABASE_URL`` (Render/Heroku
+    style, ``postgres://…``) which the engine normalizes to ``postgresql+psycopg2``.
+    Ingested documents are NEVER stored here — only accounts + statistics.
+    """
+
+    url: str = "sqlite:///./var/app.db"
+    echo: bool = False
+
+
+class AuthSettings(BaseModel):
+    """Authentication + multi-user settings (Phase 14)."""
+
+    # When False (default, local/tests), data endpoints stay open and stats are
+    # attributed to a user only when a token is present. When True (production),
+    # the data endpoints require a valid token.
+    required: bool = False
+
+    # JWT signing. PRODUCTION MUST override jwt_secret with a long random value.
+    jwt_secret: str = "dev-insecure-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_minutes: int = 60 * 24 * 7  # 7 days
+
+    # Where this backend is reachable publicly (used to build OAuth callback
+    # URLs) and where to send the user after a successful OAuth login.
+    public_base_url: str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3000"
+
+    # OAuth app credentials — operator-provided (None disables that provider).
+    google_client_id: Optional[str] = None
+    google_client_secret: Optional[str] = None
+    github_client_id: Optional[str] = None
+    github_client_secret: Optional[str] = None
+
+    # Password-reset email delivery (optional). Without SMTP configured, the
+    # reset link is logged for local/dev use instead of emailed.
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None
+    reset_token_expiry_minutes: int = 60
+
+
 # --------------------------------------------------------------------------- #
 # Profiles
 # --------------------------------------------------------------------------- #
@@ -324,6 +371,8 @@ class Settings(BaseSettings):
     api: APISettings = Field(default_factory=APISettings)
     ingestion: IngestionSettings = Field(default_factory=IngestionSettings)
     query_expansion: QueryExpansionSettings = Field(default_factory=QueryExpansionSettings)
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
 
     @model_validator(mode="after")
     def _apply_profile(self):

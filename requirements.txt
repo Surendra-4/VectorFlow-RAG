@@ -31,6 +31,15 @@ Pillow>=10.0.0                    # Image handling for OCR
 # Cache (Phase 6) — Redis backend is optional; in-memory cache works without it
 redis>=5.0                        # Redis client (only imported when backend=redis)
 
+# Auth & Database (Phase 14) — users + per-user stats (NOT ingested documents)
+sqlalchemy>=2.0                   # ORM for users + stats
+psycopg2-binary>=2.9              # PostgreSQL driver (production; SQLite needs no driver)
+bcrypt>=4.0                       # password hashing
+PyJWT>=2.8                        # JWT issue/verify
+email-validator>=2.0             # pydantic EmailStr validation
+# OAuth (Google/GitHub) uses the authorization-code flow over `requests` (no SDK);
+# password-reset email uses stdlib smtplib when SMTP is configured.
+
 # Data & ML
 requests>=2.32.0                  # HTTP client
 numpy>=1.26.0                     # Numerical computing
