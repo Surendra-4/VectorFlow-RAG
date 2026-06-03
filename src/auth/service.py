@@ -156,3 +156,23 @@ def record_event(db: Session, user: User, **increments: int) -> None:
             setattr(stats, key, (getattr(stats, key) or 0) + amount)
     stats.last_active_at = datetime.now(timezone.utc)
     db.flush()
+
+
+def record_for_user_id(user_id: Optional[str], **increments: int) -> None:
+    """Fire-and-forget per-user stat increment in its own session.
+
+    Used by the data routes (search/ask/ingest) to attribute usage to the
+    authenticated caller without holding a request-scoped session. Never raises
+    — observability must not break a response.
+    """
+    if not user_id:
+        return
+    from src.db.session import session_scope
+
+    try:
+        with session_scope() as db:
+            user = db.get(User, user_id)
+            if user is not None:
+                record_event(db, user, **increments)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("record_for_user_id suppressed: %s", exc)

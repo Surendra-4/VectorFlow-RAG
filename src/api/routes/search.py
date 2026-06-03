@@ -8,8 +8,9 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends
 
-from src.api.dependencies import get_pipeline, get_request_id
+from src.api.dependencies import get_pipeline, get_request_id, require_user_if_enabled
 from src.api.schemas import RetrievalResult, SearchRequest, SearchResponse
+from src.auth import service as auth_service
 
 router = APIRouter(tags=["retrieval"])
 
@@ -28,6 +29,7 @@ def _to_result(d: Dict[str, Any]) -> RetrievalResult:
 def search(
     req: SearchRequest,
     pipeline=Depends(get_pipeline),
+    user=Depends(require_user_if_enabled),
     request_id: str = Depends(get_request_id),
 ) -> SearchResponse:
     if pipeline.hybrid_retriever is None:
@@ -40,6 +42,9 @@ def search(
     else:
         results = pipeline.search(req.query, k=req.k, return_trace=False)
         trace_dict = None
+
+    if user is not None:
+        auth_service.record_for_user_id(user.id, searches=1, retrievals=1)
 
     return SearchResponse(
         query=req.query,

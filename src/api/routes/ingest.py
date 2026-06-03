@@ -12,13 +12,19 @@ from typing import List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
-from src.api.dependencies import get_ingest_lock, get_pipeline, get_request_id
+from src.api.dependencies import (
+    get_ingest_lock,
+    get_pipeline,
+    get_request_id,
+    require_user_if_enabled,
+)
 from src.api.schemas import (
     IngestionFailure,
     IngestionResponse,
     IngestPathsRequest,
     IngestTextRequest,
 )
+from src.auth import service as auth_service
 from src.observability import get_metrics
 
 router = APIRouter(tags=["ingestion"], prefix="/ingest")
@@ -46,6 +52,7 @@ def ingest_text(
     body: IngestTextRequest,
     pipeline=Depends(get_pipeline),
     lock=Depends(get_ingest_lock),
+    user=Depends(require_user_if_enabled),
     request_id: str = Depends(get_request_id),
 ) -> IngestionResponse:
     if body.metadatas is not None and len(body.metadatas) != len(body.documents):
@@ -58,6 +65,10 @@ def ingest_text(
         pipeline.ingest_documents(body.documents, metadatas=body.metadatas, reset=body.reset)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     _record_ingest_metrics("text", elapsed_ms, len(pipeline.corpus), 0)
+    if user is not None:
+        auth_service.record_for_user_id(
+            user.id, documents_ingested=len(body.documents), chunks_ingested=len(pipeline.corpus)
+        )
     return IngestionResponse(
         successes=[f"text:{i}" for i in range(len(body.documents))],
         failures=[],
@@ -73,6 +84,7 @@ def ingest_paths(
     body: IngestPathsRequest,
     pipeline=Depends(get_pipeline),
     lock=Depends(get_ingest_lock),
+    user=Depends(require_user_if_enabled),
     request_id: str = Depends(get_request_id),
 ) -> IngestionResponse:
     kwargs = {"reset": body.reset}
@@ -83,6 +95,10 @@ def ingest_paths(
         result = pipeline.ingest_files(body.paths, **kwargs)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     _record_ingest_metrics("paths", elapsed_ms, result["chunks"], len(result["failures"]))
+    if user is not None:
+        auth_service.record_for_user_id(
+            user.id, documents_ingested=len(result["successes"]), chunks_ingested=result["chunks"]
+        )
     return IngestionResponse(
         successes=result["successes"],
         failures=_to_failures(result["failures"]),
@@ -99,6 +115,7 @@ async def ingest_files(
     reset: bool = Form(True),
     pipeline=Depends(get_pipeline),
     lock=Depends(get_ingest_lock),
+    user=Depends(require_user_if_enabled),
     request_id: str = Depends(get_request_id),
 ) -> IngestionResponse:
     if not files:
@@ -121,6 +138,10 @@ async def ingest_files(
             result = pipeline.ingest_files(paths, reset=reset)
         elapsed_ms = (time.perf_counter() - t0) * 1000
         _record_ingest_metrics("files", elapsed_ms, result["chunks"], len(result["failures"]))
+        if user is not None:
+            auth_service.record_for_user_id(
+                user.id, documents_ingested=len(result["successes"]), chunks_ingested=result["chunks"]
+            )
 
         return IngestionResponse(
             successes=[Path(p).name for p in result["successes"]],

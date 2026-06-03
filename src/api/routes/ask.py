@@ -24,9 +24,10 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from src.api.dependencies import get_pipeline, get_request_id
+from src.api.dependencies import get_pipeline, get_request_id, require_user_if_enabled
 from src.api.routes.search import _to_result
 from src.api.schemas import AskMetrics, AskRequest, AskResponse
+from src.auth import service as auth_service
 
 router = APIRouter(tags=["retrieval"])
 
@@ -35,8 +36,14 @@ router = APIRouter(tags=["retrieval"])
 def ask(
     req: AskRequest,
     pipeline=Depends(get_pipeline),
+    user=Depends(require_user_if_enabled),
     request_id: str = Depends(get_request_id),
 ):
+    if user is not None:
+        # Attribute the question now; retrieval/generation happen below (or in
+        # the SSE generator) but the question is the user-facing unit.
+        auth_service.record_for_user_id(user.id, asks=1, retrievals=1)
+
     if req.stream:
         return _stream_ask_response(req, pipeline, request_id)
 
