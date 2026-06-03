@@ -133,6 +133,17 @@ def register_error_handlers(app) -> None:
         UnknownProviderError,
     )
 
+    from src.auth.service import AuthError
+
+    @app.exception_handler(AuthError)
+    async def _auth_handler(request: Request, exc: AuthError):
+        return _error(
+            request,
+            status_code=exc.status,
+            code=exc.code,
+            message=exc.message,
+        )
+
     @app.exception_handler(ProviderError)
     async def _provider_handler(request: Request, exc: ProviderError):
         if isinstance(exc, ProviderAuthError):
