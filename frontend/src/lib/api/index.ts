@@ -18,3 +18,4 @@ export * as modelsApi from "./models";
 export * as runtimeConfigApi from "./runtimeConfig";
 export * as indexesApi from "./indexes";
 export * as jobsApi from "./jobs";
+export * as authApi from "./auth";

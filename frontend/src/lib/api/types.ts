@@ -442,3 +442,43 @@ export interface BenchmarkResultRow {
   estimated_memory_bytes: number;
   timestamp: number;
 }
+
+// ---- Phase 14: auth + per-user stats --------------------------------- //
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  avatar_url?: string | null;
+  provider: string;
+  email_verified: boolean;
+  created_at?: string | null;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: AuthUser;
+  request_id: string;
+}
+
+export interface AuthProvidersInfo {
+  password: boolean;
+  google: boolean;
+  github: boolean;
+  auth_required: boolean;
+  request_id: string;
+}
+
+export interface UserStats {
+  searches: number;
+  asks: number;
+  retrievals: number;
+  documents_ingested: number;
+  chunks_ingested: number;
+  cache_hits: number;
+  tokens_generated: number;
+  last_active_at?: string | null;
+  reset_at?: string | null;
+}
