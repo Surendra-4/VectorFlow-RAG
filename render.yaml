@@ -25,7 +25,7 @@ services:
     # `standard` (2 GB RAM) is the smallest plan that reliably fits the local
     # embedding model (~1 GB resident). `free`/`starter` (512 MB) get OOM-killed
     # during "Initializing RAGPipeline" — see DEPLOYMENT.md › Sizing & cost.
-    plan: standard
+    plan: free
     # region: oregon
     branch: main
     buildCommand: pip install -r requirements.txt
