@@ -32,6 +32,24 @@ function stripTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
 }
 
+/**
+ * Headers added to every backend request, shared by `apiFetch` and the
+ * streaming `fetch` paths so they behave identically:
+ *  - the bearer token, when the user is signed in;
+ *  - `ngrok-skip-browser-warning` when the backend is an ngrok free tunnel, so
+ *    ngrok serves the real JSON/SSE response instead of its HTML interstitial.
+ *    The header is harmless against any other backend (it's simply ignored).
+ */
+export function defaultHeaders(baseUrl: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    const token = getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+  if (baseUrl.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "true";
+  return headers;
+}
+
 export interface ApiRequestInit {
   method?: string;
   body?: unknown; // JSON-serializable
@@ -61,13 +79,9 @@ export async function apiFetch<T = unknown>(
   const base = init.baseUrl ?? resolveBaseUrl();
   const url = `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 
-  const headers: Record<string, string> = { ...init.headers };
-
-  // Attach the bearer token (if signed in) unless the caller set Authorization.
-  if (typeof window !== "undefined" && !("Authorization" in headers) && !("authorization" in headers)) {
-    const token = getToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-  }
+  // Base headers (bearer token + ngrok skip) first, so an explicit caller
+  // header always wins.
+  const headers: Record<string, string> = { ...defaultHeaders(base), ...init.headers };
 
   let body: BodyInit | undefined;
 
