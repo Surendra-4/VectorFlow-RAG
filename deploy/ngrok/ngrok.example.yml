@@ -1,0 +1,26 @@
+# ngrok agent config for a STABLE, FREE public URL for the backend.
+#
+# The free ("Personal") ngrok plan includes ONE static domain and needs no
+# credit card. With a static domain your public URL never changes between
+# sessions — so OAuth callbacks and the Vercel frontend config are one-time
+# setups. Full walkthrough: DEPLOYMENT.md › "Option A — ngrok static domain".
+#
+# Setup (once):
+#   brew install ngrok
+#   ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN     # from dashboard.ngrok.com
+#   # Claim your free static domain at dashboard.ngrok.com ▸ Domains
+#
+# Then copy this file to ~/.config/ngrok/ngrok.yml (edit the two values) and run:
+#   ngrok start vectorflow
+#
+# Or skip the file entirely and run the one-liner (ngrok v3):
+#   ngrok http 8000 --url=https://YOUR-STATIC-DOMAIN.ngrok-free.app
+#   (older ngrok uses --domain= instead of --url=)
+
+version: "2"
+authtoken: YOUR_NGROK_AUTHTOKEN
+tunnels:
+  vectorflow:
+    proto: http
+    addr: 8000                                   # the local FastAPI port
+    domain: YOUR-STATIC-DOMAIN.ngrok-free.app     # your free static domain
