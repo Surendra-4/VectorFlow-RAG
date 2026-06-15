@@ -53,7 +53,10 @@ export function BenchmarkPanel() {
   };
 
   const rows = (job.progress?.result?.results as BenchmarkResultRow[] | undefined) ?? [];
+  const skipped =
+    (job.progress?.result?.skipped as { recipe: string; reason: string }[] | undefined) ?? [];
   const running = job.streaming && !job.done;
+  const failed = job.done && job.progress?.status === "failed";
 
   return (
     <Card>
@@ -88,6 +91,25 @@ export function BenchmarkPanel() {
       {job.progress && running && (
         <div className="mt-3">
           <ProgressBar value={job.progress.progress} label={job.progress.message} />
+        </div>
+      )}
+
+      {failed && (
+        <div className="mt-3 rounded border border-danger/40 bg-danger/10 p-2 text-xs text-danger">
+          Benchmark failed: {job.progress?.error || "unknown error"}
+        </div>
+      )}
+
+      {skipped.length > 0 && (
+        <div className="mt-3 rounded border border-warning/40 bg-warning/10 p-2 text-xs">
+          <p className="font-medium text-warning">Skipped {skipped.length} recipe(s):</p>
+          <ul className="mt-1 list-inside list-disc text-fg-muted">
+            {skipped.map((s) => (
+              <li key={s.recipe}>
+                <span className="font-mono">{s.recipe}</span> — {s.reason}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

@@ -489,6 +489,23 @@ def validate_recipe(
     errors = _static_param_errors(spec, resolved, dim)
     warnings = _warnings(spec, resolved, dim, n_vectors or None)
 
+    # Hard training-point floor. ``index_factory`` happily builds an *empty*
+    # trainable index, so the construct check below passes — but ``train()``
+    # later raises "nx >= k" when the corpus has fewer vectors than centroids
+    # (e.g. IVF nlist=100 needs ≥100 points). Surface that here as an error so
+    # the builder disables "Build" with a clear reason instead of letting the
+    # background job crash. Only enforced when we actually know the corpus size.
+    mtp = min_training_points(resolved)
+    if mtp and 0 < n_vectors < mtp:
+        errors.append({
+            "field": "n_vectors",
+            "message": (
+                f"This recipe trains on the corpus and needs ≥{mtp} vectors, but "
+                f"only {n_vectors} are ingested. Ingest more documents, lower "
+                f"nlist/pq_nbits, or choose flat/hnsw (no training required)."
+            ),
+        })
+
     # FAISS gets the final word on legality.
     if construct and not errors:
         try:

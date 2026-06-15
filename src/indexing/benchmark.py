@@ -162,13 +162,19 @@ def benchmark_recipes(
     k: int = 10,
     params: Optional[Dict[str, Dict[str, Any]]] = None,
     persist_path: Optional[Path] = None,
+    skipped: Optional[List[Dict[str, str]]] = None,
     progress=None,
 ) -> List[BenchmarkResult]:
     """Build each recipe over ``corpus`` and benchmark it against exact search.
 
     ``progress(pct, msg)`` is an optional callback (e.g. a JobContext.set_progress)
-    so this can run as a background job. Returns one BenchmarkResult per recipe;
-    optionally persists the full run to ``persist_path``.
+    so this can run as a background job. Returns one BenchmarkResult per recipe
+    that built successfully; optionally persists the full run to ``persist_path``.
+
+    A recipe that can't be built on this corpus (e.g. an IVF/PQ recipe whose
+    training needs more vectors than are ingested) is **skipped, not fatal** —
+    the others still run. If ``skipped`` (a list) is passed, one
+    ``{"recipe", "reason"}`` dict is appended to it per skipped recipe.
     """
     from src.faiss_store import FAISSVectorStore
 
@@ -199,20 +205,31 @@ def benchmark_recipes(
         factory = build_factory_string(recipe_id, rparams, dim)
         idx_dir = workdir / f"bench_{recipe_id}"
 
-        store = FAISSVectorStore(
-            persist_directory=str(idx_dir),
-            collection_name="bench",
-            index_type=recipe_id,
-            factory_string=factory,
-            nprobe=rparams.get("nprobe"),
-            hnsw_ef_search=rparams.get("efSearch", 64),
-        )
+        try:
+            store = FAISSVectorStore(
+                persist_directory=str(idx_dir),
+                collection_name="bench",
+                index_type=recipe_id,
+                factory_string=factory,
+                nprobe=rparams.get("nprobe"),
+                hnsw_ef_search=rparams.get("efSearch", 64),
+            )
 
-        t_build = time.perf_counter()
-        store.add_documents(texts=texts, embeddings=corpus.tolist(), ids=ids)
-        build_s = time.perf_counter() - t_build
+            t_build = time.perf_counter()
+            store.add_documents(texts=texts, embeddings=corpus.tolist(), ids=ids)
+            build_s = time.perf_counter() - t_build
 
-        scores = evaluate_store(store, queries, truth_ids, k)
+            scores = evaluate_store(store, queries, truth_ids, k)
+        except Exception as exc:
+            # A recipe that can't be built on this corpus (most often: too few
+            # vectors to train an IVF/PQ index) shouldn't sink the whole sweep.
+            # Record why and move on so the buildable recipes still get scored.
+            reason = str(exc).strip().splitlines()[-1] if str(exc).strip() else type(exc).__name__
+            logger.warning("Skipping recipe %r in benchmark: %s", recipe_id, reason)
+            if skipped is not None:
+                skipped.append({"recipe": recipe_id, "reason": reason})
+            continue
+
         results.append(BenchmarkResult(
             index_name=recipe_id,
             recipe=recipe_id,

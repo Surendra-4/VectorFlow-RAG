@@ -134,14 +134,22 @@ def benchmark_recipes_job(
         # Embedding was 0–30%; benchmarking spans 30–100%.
         ctx.set_progress(30.0 + 0.7 * pct, msg)
 
+    skipped: List[Dict[str, str]] = []
     results = benchmark_recipes(
         emb, recipe_ids, workdir=workdir, ids=ids, k=k, params=params,
-        persist_path=persist_path, progress=_progress,
+        persist_path=persist_path, skipped=skipped, progress=_progress,
     )
+    if not results:
+        # Every recipe failed to build (e.g. all need more training vectors than
+        # the corpus has). Fail the job with a clear, actionable reason rather
+        # than "succeeding" with an empty table.
+        reasons = "; ".join(f"{s['recipe']}: {s['reason']}" for s in skipped) or "unknown error"
+        raise ValueError(f"No recipe could be benchmarked on this corpus — {reasons}")
     return {
         "k": k,
         "num_vectors": n,
         "dimension": int(emb.shape[1]),
         "results": [r.to_dict() for r in results],
+        "skipped": skipped,
         "artifact": str(persist_path) if persist_path else None,
     }

@@ -95,6 +95,26 @@ def test_benchmark_recipes_compares_multiple(temp_dir):
         assert r.ingest_vectors_per_sec > 0
 
 
+def test_benchmark_skips_unbuildable_recipe(temp_dir):
+    # A tiny corpus can't train IVF with nlist=100 (FAISS needs n >= nlist).
+    # That recipe must be skipped — not fatal — so the buildable recipes (flat,
+    # hnsw: no training) still get scored. Reproduces the "Run benchmark does
+    # nothing" bug where one bad recipe sank the whole sweep.
+    v = _corpus(20, 16, seed=7)
+    skipped: list = []
+    results = benchmark_recipes(
+        v, ["flat", "hnsw", "ivf"], workdir=temp_dir / "wd_skip",
+        ids=[f"c{i}" for i in range(20)], k=5,
+        params={"ivf": {"nlist": 100}},
+        skipped=skipped,
+    )
+    got = {r.recipe for r in results}
+    assert "flat" in got and "hnsw" in got      # buildable recipes survived
+    assert "ivf" not in got                       # untrainable recipe dropped
+    assert [s["recipe"] for s in skipped] == ["ivf"]
+    assert skipped[0]["reason"]                    # carries a human-readable reason
+
+
 def test_benchmark_persists_artifact(temp_dir):
     v = _corpus(120, 16)
     out = temp_dir / "artifacts" / "bench.json"

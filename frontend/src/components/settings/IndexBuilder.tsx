@@ -101,7 +101,10 @@ export function IndexBuilder({
   };
 
   const est = validation?.estimate ?? null;
-  const canBuild = !!validation?.ok && !!name.trim() && !busy;
+  // A build re-embeds the *current* corpus — so there must be one. (dim is the
+  // model's fixed embedding size and is non-zero even with no documents, so it
+  // can't stand in for "has a corpus".)
+  const canBuild = !!validation?.ok && !!name.trim() && !busy && nVectors > 0;
 
   return (
     <Card>
@@ -195,9 +198,9 @@ export function IndexBuilder({
         <Button disabled={!canBuild} loading={busy} onClick={create}>
           Build index
         </Button>
-        {dim <= 0 && (
+        {nVectors <= 0 && (
           <p className="mt-1 text-xs text-fg-muted">
-            Ingest documents first so the embedding dimension is known.
+            Ingest documents first — an index is built from the current corpus.
           </p>
         )}
       </div>

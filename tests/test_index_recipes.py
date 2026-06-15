@@ -105,10 +105,24 @@ def test_zero_dim_rejected():
     assert any(e["field"] == "dim" for e in v.errors)
 
 
-def test_low_training_points_warns_not_errors():
+def test_below_training_floor_errors():
+    # Fewer vectors than centroids (n < nlist) is a HARD FAISS training failure
+    # ("nx >= k") — so validation must REJECT it, not merely warn, otherwise the
+    # build/benchmark job crashes at train() time.
     v = validate_recipe("ivf", {"nlist": 100}, dim=384, n_vectors=50)
-    assert v.ok  # still valid…
-    assert any("39" in w or "training" in w.lower() for w in v.warnings)  # …but warned
+    assert not v.ok
+    assert any(
+        "train" in e["message"].lower() or "vectors" in e["message"].lower()
+        for e in v.errors
+    )
+
+
+def test_above_floor_but_below_preferred_warns():
+    # Enough to train (n >= nlist) but below FAISS's ~39×nlist comfort zone:
+    # valid, but warned.
+    v = validate_recipe("ivf", {"nlist": 100}, dim=384, n_vectors=200)
+    assert v.ok
+    assert any("39" in w or "training" in w.lower() for w in v.warnings)
 
 
 def test_min_training_points_reported():
