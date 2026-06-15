@@ -1,374 +1,282 @@
-# Deploying VectorFlow-RAG
+# Deploying VectorFlow-RAG — the ₹0 setup
 
-This app loads PyTorch, sentence-transformers, FAISS and a local embedding
-model — together ~1 GB of RAM, which blows past the free tier of most cloud
-hosts. So instead of renting a big server, we **run the backend on your own
-machine** and expose it to the internet through a **Cloudflare Tunnel**. The
-lightweight frontend stays on **Vercel**, and accounts/stats live in a small
-**managed Postgres** database.
+This app loads PyTorch, sentence-transformers, FAISS and a local embedding model
+(~1 GB RAM) — too much for free cloud servers. So we **run the backend on your
+own Mac**, expose it through a **free tunnel**, host the lightweight **frontend
+on Vercel free tier**, and keep accounts/stats in a **free Postgres tier**.
 
-- **Frontend** → [Vercel](https://vercel.com) (Next.js)
-- **Backend** → your PC (FastAPI), published via **Cloudflare Tunnel** at a stable hostname like `https://api.yourdomain.com`
-- **Database** → managed **PostgreSQL** ([Neon](https://neon.tech) free tier) — users + per-user statistics only, never your ingested documents
+**No paid servers, no paid domain, no credit card, ₹0 recurring.**
 
-The whole thing is **environment-driven**: the same code you run locally is what
-serves traffic — you only change configuration.
+- **Frontend** → [Vercel](https://vercel.com) free tier (Next.js)
+- **Backend** → your Mac (FastAPI), published via a **free tunnel** (ngrok or Cloudflare)
+- **Database** → free **Postgres** ([Neon](https://neon.tech) / [Supabase](https://supabase.com)) — or even local SQLite
 
-> The trade-off: your backend is online **only while your PC is on and the
-> tunnel is running**. The frontend (Vercel) and the database (Neon) are always
-> up; the API answers when your machine does. Run the tunnel as a background
-> service ([step 6](#6-keep-it-running)) so it survives reboots.
+> Your backend is online only while your Mac is on and the tunnel is running.
+> The frontend (Vercel) and database stay up regardless; the API answers when
+> your machine does.
 
 ---
 
-## Contents
+## Does it work behind a tunnel URL that changes between sessions?
 
-1. [Architecture](#1-architecture)
-2. [Before you start](#2-before-you-start)
-3. [Provision the database](#3-provision-the-database-neon)
-4. [Configure & run the backend](#4-configure--run-the-backend-on-your-pc)
-5. [Create the Cloudflare Tunnel](#5-create-the-cloudflare-tunnel)
-6. [Keep it running](#6-keep-it-running)
-7. [Deploy the frontend on Vercel](#7-deploy-the-frontend-on-vercel)
-8. [Enable Google & GitHub sign-in](#8-enable-google--github-sign-in)
-9. [Choose an answer model](#9-choose-an-answer-model)
-10. [Smoke test](#10-smoke-test)
-11. [Operational notes](#11-operational-notes)
-12. [Troubleshooting](#12-troubleshooting)
+**Short answer: the app works fine behind a changing URL — except OAuth sign-in
+and the public frontend link, which want a *stable* hostname.** Here's exactly
+what does and doesn't care:
 
----
+| Component | Needs a stable URL? | Why |
+|-----------|:---:|-----|
+| Email/password sign-up & login (JWT) | **No** | The JWT is signed/verified with `VFR_AUTH__JWT_SECRET` — independent of hostname. |
+| CORS | **No** | It allow-lists your **Vercel** origin (stable). The backend's own URL isn't a CORS origin. |
+| OAuth *state* cookie / HTTPS cookie flag | **No** | Set and read on the backend host within a single login; both tunnels are HTTPS. |
+| Ingest / search / ask (incl. streaming) | **No** | They just need to reach the backend, wherever it is. |
+| **Frontend → backend** (`NEXT_PUBLIC_API_BASE_URL`) | **Yes** | Baked into the Vercel build. New URL ⇒ update the env var + redeploy (or use the `localStorage` override below). |
+| **Backend** `VFR_AUTH__PUBLIC_BASE_URL` | **Yes** | Used to build OAuth callbacks. New URL ⇒ edit `.env` + restart. |
+| **OAuth redirect URIs** (Google/GitHub) | **Yes** | The provider rejects any callback that doesn't match what you registered. New URL ⇒ re-register in the provider console. |
 
-## 1. Architecture
+So nothing is *architecturally* broken by an ephemeral URL — email/password +
+all RAG features work. The friction is purely **OAuth** (re-register each
+session) and **re-pointing the Vercel frontend** each session.
 
-```
-        ┌────────────────────┐        ┌──────────────────────┐
-Browser ┤  Vercel (Next.js)  ├─HTTPS─►│  Cloudflare edge      │
-        │  the web UI        │  fetch │  api.yourdomain.com   │
-        └────────────────────┘        └──────────┬───────────┘
-                                                  │ encrypted tunnel
-                                                  ▼
-                                    ┌──────────────────────────┐
-                                    │  YOUR PC                  │
-                                    │  cloudflared ─► uvicorn   │
-                                    │  FastAPI + RAG (PyTorch,  │
-                                    │  FAISS, embeddings)       │
-                                    └──────────┬───────────────┘
-                                               │ SQLAlchemy (TLS)
-                                               ▼
-                                    ┌──────────────────────────┐
-                                    │  Neon PostgreSQL (cloud)  │
-                                    │  users + per-user stats   │
-                                    └──────────────────────────┘
-```
-
-- `cloudflared` opens an **outbound** connection to Cloudflare, so there are
-  **no router ports to open** and your home IP is never exposed.
-- The browser holds a **JWT** in `localStorage` and sends it as
-  `Authorization: Bearer …`. With `VFR_AUTH__REQUIRED=true`, the data endpoints
-  reject anonymous calls.
-- **Postgres** stores only accounts and counters. Ingested documents stay in
-  the vector index on your PC and are never written to the database.
+**The free fix for a permanent hostname (no domain purchase): an ngrok free
+static domain.** The free ngrok plan gives every account **one static domain**
+like `https://your-name.ngrok-free.app`, with **no credit card**. It never
+changes between sessions — so OAuth and the Vercel config become one-time setups.
+That's **Option A** below, and it's what I recommend.
 
 ---
 
-## 2. Before you start
+## Choose your tunnel
 
-Accounts / tools you'll need (all free except the domain):
+| | **Option A — ngrok static domain** (recommended) | **Option B — Cloudflare Quick Tunnel** |
+|---|---|---|
+| Public URL | **Stable** `https://your-name.ngrok-free.app` | **Ephemeral** `https://<random>.trycloudflare.com` (new each run) |
+| Account | Free ngrok account (no card) | **None** |
+| OAuth (Google/GitHub) | Register **once** | Re-register **every session** |
+| Vercel frontend | Set `NEXT_PUBLIC_API_BASE_URL` **once** | Re-point + redeploy each session (or `localStorage` override) |
+| Caveat | One-time "browser warning" interstitial — already handled in-app (see below) | None, but the URL churns |
+
+Both are ₹0. Pick **A** for a shareable, set-and-forget link; **B** for a
+throwaway personal demo with zero signup.
+
+---
+
+## Before you start
+
+Free accounts/tools (none require a credit card):
 
 - [ ] [GitHub](https://github.com) — the repo (Vercel deploys from it).
-- [ ] [Vercel](https://vercel.com) — frontend hosting.
-- [ ] [Cloudflare](https://dash.cloudflare.com/sign-up) account **+ a domain you control.** The account and DNS are free; you must own a domain and point it at Cloudflare's nameservers (Cloudflare walks you through this when you "Add a site"). A cheap `.com`/`.dev` is fine.
-- [ ] [Neon](https://neon.tech) — managed Postgres (free tier is plenty).
-- [ ] [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) on your PC. macOS: `brew install cloudflared`.
-- [ ] Python deps installed: from the repo root, `pip install -r requirements.txt`.
-- [ ] *(optional)* Google / GitHub OAuth apps for social sign-in — [step 8](#8-enable-google--github-sign-in).
-- [ ] *(optional)* An API key for a hosted LLM (OpenAI / Anthropic / Gemini / Groq / OpenRouter) — the answer model, [step 9](#9-choose-an-answer-model).
-
-**Pick your two URLs up front** — most steps reference them and OAuth needs them
-to match exactly:
-
-| What | Example | Set as |
-|------|---------|--------|
-| Backend (your tunnel) | `https://api.yourdomain.com` | `VFR_AUTH__PUBLIC_BASE_URL` |
-| Frontend (Vercel) | `https://vectorflow.vercel.app` | `VFR_AUTH__FRONTEND_URL` |
-
-Committed reference templates:
-
-- `.env.production.example` — every backend variable, annotated (you copy it to `.env`).
-- `deploy/cloudflared/config.example.yml` — the tunnel config.
-- `frontend/.env.production.example` + `frontend/vercel.json` — the frontend.
+- [ ] [Vercel](https://vercel.com) — frontend hosting (free Hobby).
+- [ ] [Neon](https://neon.tech) **or** [Supabase](https://supabase.com) — free Postgres. *(Or skip and use local SQLite.)*
+- [ ] **Option A:** an [ngrok](https://ngrok.com) account (free Personal plan) + `brew install ngrok`.
+- [ ] **Option B:** `brew install cloudflared` (no account).
+- [ ] Python deps: from the repo root, `pip install -r requirements.txt`.
+- [ ] *(optional)* Google / GitHub OAuth apps — only practical with Option A.
+- [ ] *(optional, free)* [Ollama](https://ollama.com) for a local answer model.
 
 ---
 
-## 3. Provision the database (Neon)
+## 1. Database (free)
 
-1. Create a [Neon](https://neon.tech) project (pick a region near you).
-2. Create a database named `vectorflow` (or use the default).
-3. Copy the **connection string**. It looks like:
-   ```
-   postgresql://user:password@ep-xxx-123.us-east-2.aws.neon.tech/vectorflow?sslmode=require
-   ```
-   Keep the `?sslmode=require` — Neon requires TLS. The app normalizes the
-   driver to `psycopg2` automatically and creates its tables on first boot.
+**Neon:** create a project → create a database `vectorflow` → copy the
+connection string (keep `?sslmode=require`):
+```
+postgresql://user:password@ep-xxx-123.us-east-2.aws.neon.tech/vectorflow?sslmode=require
+```
+The app normalizes the driver to `psycopg2` and creates its tables on first boot.
 
-> Prefer [Supabase](https://supabase.com) or another Postgres host? Any works —
-> just paste its connection string as `DATABASE_URL` in the next step.
-
----
-
-## 4. Configure & run the backend on your PC
-
-1. From the repo root, create your env file:
-   ```bash
-   cp .env.production.example .env
-   ```
-2. Edit `.env` and set, at minimum:
-   - `DATABASE_URL` — the Neon string from step 3.
-   - `VFR_AUTH__JWT_SECRET` — `python -c "import secrets; print(secrets.token_urlsafe(48))"`
-   - `VFR_AUTH__PUBLIC_BASE_URL` — `https://api.yourdomain.com` (your tunnel hostname).
-   - `VFR_AUTH__FRONTEND_URL` — your Vercel URL.
-   - `VFR_API__CORS_ORIGINS` — `["https://<your-vercel-app>.vercel.app"]`.
-   - `VFR_SECRET_KEY` — `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` (encrypts stored provider keys).
-
-   `.env` is gitignored, so these secrets never leave your machine.
-3. Start the server (it binds to `127.0.0.1:8000` and auto-loads `.env`):
-   ```bash
-   python -m src.api
-   ```
-   First boot downloads the embedding model and ends with:
-   ```
-   Pipeline ready (backend=chromadb, cache=none)
-   DB schema ensured (users, user_stats)
-   Uvicorn running on http://127.0.0.1:8000
-   ```
-4. Sanity-check locally: `curl http://127.0.0.1:8000/health` → `{"status":"ok",…}`.
-
-Leave it running. Next we put it on the internet.
+> **Zero-account alternative:** leave `DATABASE_URL` unset and the app uses a
+> local SQLite file (`./var/app.db`) on your Mac — durable, no signup. Since the
+> backend is single-instance on your machine, this is perfectly fine.
 
 ---
 
-## 5. Create the Cloudflare Tunnel
-
-Run these once, from any directory. They create a **named** tunnel with a stable
-hostname — so the URL never changes, even across restarts.
+## 2. Configure & run the backend on your Mac
 
 ```bash
-brew install cloudflared                      # macOS (see CF docs for other OSes)
-
-cloudflared tunnel login                      # opens a browser; pick your domain
-cloudflared tunnel create vectorflow          # prints a tunnel UUID + writes credentials
-cloudflared tunnel route dns vectorflow api.yourdomain.com   # creates the DNS record
+cp .env.production.example .env
 ```
+Edit `.env` and set:
+- `DATABASE_URL` — from step 1 (or remove the line for SQLite).
+- `VFR_AUTH__JWT_SECRET` — `python -c "import secrets; print(secrets.token_urlsafe(48))"`
+- `VFR_SECRET_KEY` — `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+- `VFR_AUTH__PUBLIC_BASE_URL` — your tunnel URL (fill after step 3 the first time).
+- `VFR_AUTH__FRONTEND_URL` — your Vercel URL (fill after step 4).
+- `VFR_API__CORS_ORIGINS` — `["https://<your-vercel-app>.vercel.app"]`.
 
-Now create the config file. Copy the template and edit the three `REPLACE_`
-values:
-
+Start it (binds to `127.0.0.1:8000`, auto-loads `.env`):
 ```bash
-cp deploy/cloudflared/config.example.yml ~/.cloudflared/config.yml
+python -m src.api
 ```
-
-`~/.cloudflared/config.yml` should end up like:
-
-```yaml
-tunnel: vectorflow
-credentials-file: /Users/you/.cloudflared/<TUNNEL-UUID>.json
-ingress:
-  - hostname: api.yourdomain.com
-    service: http://localhost:8000
-  - service: http_status:404
-```
-
-Start the tunnel (in a second terminal, with the backend still running):
-
-```bash
-cloudflared tunnel run vectorflow
-```
-
-Verify from anywhere: `https://api.yourdomain.com/health` returns
-`{"status":"ok",…}`. The backend is now live on the internet.
+A healthy boot ends with `Uvicorn running on http://127.0.0.1:8000`. Check:
+`curl http://127.0.0.1:8000/health`.
 
 ---
 
-## 6. Keep it running
+## 3. Start the tunnel
 
-`cloudflared tunnel run` stops when you close the terminal. To keep the tunnel
-up across reboots, install it as a background service (it reads the same
-`~/.cloudflared/config.yml`):
+### Option A — ngrok static domain (stable)
 
 ```bash
-sudo cloudflared service install        # macOS: registers a launchd service
+brew install ngrok
+ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN     # from dashboard.ngrok.com ▸ Your Authtoken
 ```
+Claim your free static domain at **dashboard.ngrok.com ▸ Domains** (you get one,
+e.g. `your-name.ngrok-free.app`). Then run, with the backend still up:
+```bash
+ngrok http 8000 --url=https://your-name.ngrok-free.app
+#  older ngrok:  ngrok http 8000 --domain=your-name.ngrok-free.app
+```
+Or use the committed config: copy `deploy/ngrok/ngrok.example.yml` to
+`~/.config/ngrok/ngrok.yml`, edit the two values, and run `ngrok start vectorflow`.
 
-Manage it with `sudo launchctl kickstart -k system/com.cloudflare.cloudflared`
-(restart) or your OS's service tools.
+Set `VFR_AUTH__PUBLIC_BASE_URL=https://your-name.ngrok-free.app` in `.env` and
+restart the backend. Verify: `https://your-name.ngrok-free.app/health`.
 
-For the **backend** itself, keep `python -m src.api` running however you prefer —
-a dedicated terminal/`tmux`, a `launchd`/`systemd` unit, or `pm2 start "python -m src.api"`.
-The API is reachable only while this process is up.
+> **ngrok's browser-warning page** is already handled: the frontend sends the
+> `ngrok-skip-browser-warning` header on every request, so the API returns real
+> JSON/SSE, not the interstitial. Nothing to configure.
+
+### Option B — Cloudflare Quick Tunnel (ephemeral, zero-account)
+
+```bash
+brew install cloudflared
+cloudflared tunnel --url http://localhost:8000
+```
+It prints `https://<random-words>.trycloudflare.com`. Use that as your tunnel
+URL — but it **changes every run**, so follow the
+[per-session checklist](#6-per-session-checklist-option-b-only) each time.
 
 ---
 
-## 7. Deploy the frontend on Vercel
+## 4. Deploy the frontend on Vercel
 
-1. Push the repo to GitHub if you haven't:
-   ```bash
-   git push origin main
-   ```
-2. Vercel dashboard → **Add New ▸ Project** → import this repository.
-3. **Set the Root Directory to `frontend`.** The Next.js app lives in the
-   `frontend/` subfolder — this is the setting people miss.
-4. Framework auto-detects as **Next.js**. Leave build/output at defaults.
-5. Add an **Environment Variable** (scope: Production):
+1. `git push origin main` (if not already pushed).
+2. Vercel → **Add New ▸ Project** → import this repo.
+3. **Set Root Directory to `frontend`** (the app lives in that subfolder).
+4. Add an Environment Variable (Production):
 
    | Key | Value |
    |-----|-------|
-   | `NEXT_PUBLIC_API_BASE_URL` | `https://api.yourdomain.com` |
+   | `NEXT_PUBLIC_API_BASE_URL` | your tunnel URL (e.g. `https://your-name.ngrok-free.app`) |
 
-6. **Deploy.** You get `https://<project>.vercel.app`.
+5. Deploy → you get `https://<project>.vercel.app`.
+6. Put that Vercel URL into the backend `.env` as `VFR_AUTH__FRONTEND_URL` and
+   `VFR_API__CORS_ORIGINS`, then restart the backend.
 
-> `NEXT_PUBLIC_*` is baked in at **build time** — change the backend URL later and
-> you must **redeploy** the frontend (Deployments ▸ ⋯ ▸ Redeploy).
-
-If your final Vercel URL differs from what you guessed, update
-`VFR_AUTH__FRONTEND_URL` and `VFR_API__CORS_ORIGINS` in the backend `.env` and
-restart `python -m src.api`.
+> `NEXT_PUBLIC_*` is baked at build time — changing it later needs a redeploy
+> (Deployments ▸ ⋯ ▸ Redeploy).
 
 ---
 
-## 8. Enable Google & GitHub sign-in
+## 5. Environment variables — what changes, and when
 
-Optional — **email/password works without any of this.** The frontend shows a
-provider's button only when the backend reports it configured
-(`GET /api/v1/auth/providers`). The callback URL is always:
+| Variable | Where | ngrok static (Option A) | Quick tunnel (Option B) |
+|----------|-------|----|----|
+| `DATABASE_URL` | backend `.env` | once | once |
+| `VFR_AUTH__JWT_SECRET` | backend `.env` | once | once |
+| `VFR_SECRET_KEY` | backend `.env` | once | once |
+| `VFR_AUTH__FRONTEND_URL` | backend `.env` | once (Vercel URL) | once |
+| `VFR_API__CORS_ORIGINS` | backend `.env` | once (Vercel URL) | once |
+| `VFR_AUTH__PUBLIC_BASE_URL` | backend `.env` | once | **every session** |
+| `NEXT_PUBLIC_API_BASE_URL` | Vercel | once | **every session** (+ redeploy) |
+| OAuth client id/secret | backend `.env` | once | re-register each session |
 
+---
+
+## 6. Per-session checklist (Option B only)
+
+With the ngrok static domain (Option A) there's **nothing** to do each session —
+just start the backend and `ngrok start vectorflow`. With Quick Tunnel, each time
+the URL changes:
+
+1. Copy the new `https://<random>.trycloudflare.com`.
+2. Backend: set `VFR_AUTH__PUBLIC_BASE_URL` to it in `.env`, restart `python -m src.api`.
+3. Frontend: update `NEXT_PUBLIC_API_BASE_URL` on Vercel and redeploy — **or**,
+   for a personal demo, skip the rebuild and run in the browser console:
+   ```js
+   localStorage.vfr_api_base_url = "https://<random>.trycloudflare.com"
+   ```
+4. If you use OAuth: update the redirect URIs in the Google/GitHub consoles.
+
+---
+
+## 7. Enable Google & GitHub sign-in (optional)
+
+Email/password works without this. OAuth is practical **only with a stable URL
+(Option A)** — the callback must match `VFR_AUTH__PUBLIC_BASE_URL` exactly.
+
+- **Google** ▸ [Cloud Console](https://console.cloud.google.com) → OAuth client (Web) →
+  Authorized redirect URI: `https://your-name.ngrok-free.app/api/v1/auth/google/callback`.
+- **GitHub** ▸ [Developer settings ▸ OAuth Apps](https://github.com/settings/developers) →
+  callback URL: `https://your-name.ngrok-free.app/api/v1/auth/github/callback`.
+
+Put the client id/secret in `.env` (`VFR_AUTH__GOOGLE_*` / `VFR_AUTH__GITHUB_*`),
+restart the backend. The buttons then appear on `/login`.
+
+---
+
+## 8. Choose an answer model
+
+Search works out of the box; **answering questions needs a chat model**. Since
+the backend is on your Mac, **local Ollama is the free, no-key choice**:
+```bash
+brew install ollama && ollama pull llama3.2
 ```
-{VFR_AUTH__PUBLIC_BASE_URL}/api/v1/auth/{provider}/callback
-```
-
-### Google
-1. [Google Cloud Console](https://console.cloud.google.com) → create/select a project.
-2. **OAuth consent screen** → configure (External; add yourself as a test user while in “Testing”).
-3. **Credentials ▸ Create Credentials ▸ OAuth client ID** → **Web application**.
-4. **Authorized redirect URIs** → add exactly:
-   ```
-   https://api.yourdomain.com/api/v1/auth/google/callback
-   ```
-5. Put the Client ID/secret in `.env` as `VFR_AUTH__GOOGLE_CLIENT_ID` / `VFR_AUTH__GOOGLE_CLIENT_SECRET`, restart the backend.
-
-### GitHub
-1. [GitHub ▸ Settings ▸ Developer settings ▸ OAuth Apps](https://github.com/settings/developers) → **New OAuth App**.
-2. **Homepage URL** = your Vercel URL.
-3. **Authorization callback URL** = exactly:
-   ```
-   https://api.yourdomain.com/api/v1/auth/github/callback
-   ```
-4. Put the Client ID/secret in `.env` as `VFR_AUTH__GITHUB_CLIENT_ID` / `VFR_AUTH__GITHUB_CLIENT_SECRET`, restart the backend.
+It serves at `http://localhost:11434` next to the backend — pick the model in
+**Settings**. (Or paste a hosted-provider API key in Settings; keys are stored
+server-side, encrypted with `VFR_SECRET_KEY`, never sent to the browser.)
 
 ---
 
-## 9. Choose an answer model
+## 9. Smoke test
 
-VectorFlow defaults to a local **Ollama** model. Retrieval (search) works out of
-the box; **answering questions needs a chat model.** Two options:
-
-- **Local Ollama** (free, private, no API key): install [Ollama](https://ollama.com),
-  `ollama pull llama3.2`, and it's already running at `http://localhost:11434` next
-  to your backend — set the model in **Settings**.
-- **Hosted provider**: in **Settings**, pick OpenAI / Anthropic / Gemini / Groq /
-  OpenRouter and paste its API key. Keys are stored **server-side, encrypted at
-  rest** (via `VFR_SECRET_KEY`), and never sent to the browser.
-
-Since the backend runs on your own machine, local Ollama is a great no-cost
-default here — no RAM ceiling to worry about.
+Open your Vercel URL and confirm: create an account → ingest a short `.txt` →
+search returns cited results → ask streams an answer → the dashboard's *Your
+activity* counts up → *Reset my statistics* zeroes only your counters → sign out
+redirects to `/login`.
 
 ---
 
-## 10. Smoke test
+## 10. Operational notes
 
-Open your Vercel URL and walk through:
-
-- [ ] `/login` renders the split-screen with any social buttons you enabled.
-- [ ] **Create account** (email/password) → you land in the app, signed in.
-- [ ] *(if enabled)* **Continue with Google / GitHub** completes and returns you signed in.
-- [ ] **Ingest** a short `.txt` or paste text → it reports chunks added.
-- [ ] **Search** returns results with source citations.
-- [ ] **Ask** streams an answer (after [step 9](#9-choose-an-answer-model)).
-- [ ] **Dashboard** shows *Your activity* counting up; **Reset my statistics** zeroes only your counters.
-- [ ] **Sign out** returns to `/login`; protected routes redirect there when signed out.
-
----
-
-## 11. Operational notes
-
-**What's always up vs. on-demand.**
-
-| Piece | Where | Always on? |
-|-------|-------|-----------|
-| Frontend | Vercel | ✅ yes |
-| Accounts + stats | Neon Postgres | ✅ yes (survives your PC) |
-| Backend API | your PC + tunnel | ⚠️ only while the process + tunnel run |
-| Ingested docs / vector index | your PC (`indices/`) | persists on your disk between runs |
-
-**Security — your backend is publicly reachable.** That's intended (the Vercel
-frontend calls it), and it's gated:
-- `VFR_AUTH__REQUIRED=true` makes the data endpoints reject anonymous requests.
-- Passwords are bcrypt-hashed and never returned; JWTs are signed with your secret.
-- The OAuth state cookie is auto-marked `Secure` because the tunnel URL is HTTPS.
-- **Sign-up is open** by default (anyone can register an account). For a *private*
-  demo, put the tunnel hostname behind **Cloudflare Access** (Zero Trust) — note
-  that locks out the public Vercel frontend too unless you add a bypass, so it's
-  for private/personal use, not a public portfolio link.
-
-**No cold starts, but your PC must be awake.** Unlike a sleeping free dyno, your
-backend responds instantly — as long as the machine is on and not asleep.
-Disable sleep (or use `caffeinate -s` on macOS) if you want it reachable 24/7.
-
-**Heavy ML stays local.** PyTorch, FAISS and the embedding model run on your
-hardware, so there's no cloud RAM limit — the original reason for this setup.
-
-**Reset statistics.** Each user resets only their own counters from the dashboard
-(*Reset my statistics* → `POST /api/v1/auth/me/stats/reset`).
-
-**Prefer a rented server instead?** This same backend runs on any host with
-≥ 2 GB RAM (e.g. a Render *Standard* instance, a small VPS, or Fly.io): install
-`requirements.txt`, set the same env vars, and start it with
-`uvicorn src.api.app:create_app --factory --host 0.0.0.0 --port $PORT`. The
-Cloudflare Tunnel just replaces the need for that rented box.
+- **Keep it running:** the API is reachable only while `python -m src.api` and
+  the tunnel are up. Keep them in a `tmux`/terminal, and stop your Mac from
+  sleeping (`caffeinate -s python -m src.api`) for 24/7 reach.
+- **ngrok free limits:** one online tunnel and a monthly bandwidth cap — plenty
+  for a portfolio demo. The static domain and HTTPS are included.
+- **Security:** your backend is public but gated — `VFR_AUTH__REQUIRED=true`
+  rejects anonymous data calls, passwords are bcrypt-hashed, JWTs are signed.
+  Sign-up is open by default (anyone can register); that's normal for a demo.
+- **Data durability:** accounts + stats live in Postgres (or local SQLite);
+  ingested documents live in `indices/` on your Mac and persist between runs.
+- **Prefer always-on later?** The same backend runs on any ≥ 2 GB host with
+  `uvicorn src.api.app:create_app --factory --host 0.0.0.0 --port $PORT` — the
+  tunnel just removes the need to rent one.
 
 ---
 
-## 12. Troubleshooting
+## 11. Troubleshooting
 
-**CORS error in the browser console** (`blocked by CORS policy`)
-→ `VFR_API__CORS_ORIGINS` must be a JSON array containing your frontend origin
-exactly (`https://…`, no trailing slash). Edit `.env`, restart the backend.
+**API returns an ngrok HTML "You are about to visit…" page instead of JSON**
+→ The `ngrok-skip-browser-warning` header handles this in-app; if you call the
+API from `curl`/Postman, add `-H "ngrok-skip-browser-warning: 1"`.
 
-**`redirect_uri_mismatch` from Google / GitHub**
-→ The provider's registered redirect URI must equal
-`{VFR_AUTH__PUBLIC_BASE_URL}/api/v1/auth/{provider}/callback` character-for-character.
+**CORS error in the console** → `VFR_API__CORS_ORIGINS` must be a JSON array with
+your exact Vercel origin (no trailing slash). Edit `.env`, restart the backend.
 
-**`https://api.yourdomain.com` returns Cloudflare error 1033 / 502 / 530**
-→ The tunnel isn't connected or can't reach the backend. Confirm
-`cloudflared tunnel run vectorflow` is up, the backend is listening on
-`127.0.0.1:8000`, and the `ingress` `service:` URL/port matches.
+**`redirect_uri_mismatch`** → The provider's registered redirect URI must equal
+`{VFR_AUTH__PUBLIC_BASE_URL}/api/v1/auth/{provider}/callback` exactly. With Quick
+Tunnel this breaks whenever the URL changes — use Option A for OAuth.
 
-**API calls return a Cloudflare HTML challenge page instead of JSON**
-→ Cloudflare is challenging the API subdomain. In the dashboard, lower the
-security level for `api.yourdomain.com` (or add a WAF "skip" rule) and make sure
-**Under Attack Mode** is off — challenges break `fetch`/XHR.
+**Login works but API calls 401** → `NEXT_PUBLIC_API_BASE_URL` is wrong or the
+frontend wasn't redeployed after changing it; or the tunnel/backend is down.
 
-**Login works but every API call returns 401**
-→ The frontend can't reach the backend or the token isn't attached. Confirm
-`NEXT_PUBLIC_API_BASE_URL` points at the tunnel and the frontend was redeployed
-after setting it. (A 401 also clears the stored token and bounces you to `/login`.)
+**`trycloudflare.com` / ngrok URL unreachable** → the tunnel process or the
+backend (`127.0.0.1:8000`) isn't running, or the tunnel printed a new URL you
+haven't propagated yet ([§6](#6-per-session-checklist-option-b-only)).
 
-**DB connection / SSL errors at boot**
-→ Check `DATABASE_URL` and keep `?sslmode=require` for Neon. Confirm the Neon
-project isn't paused (free projects idle out) and the region/host are correct.
+**DB connection / SSL errors at boot** → check `DATABASE_URL`, keep
+`?sslmode=require`, and confirm the Neon project isn't paused (free projects idle
+out and resume on the next connection).
 
-**Questions never answer / time out**
-→ No chat model configured. Complete [step 9](#9-choose-an-answer-model).
-
-**Social buttons don't appear on `/login`**
-→ That provider isn't configured. Verify both its client-ID and client-secret
-are in `.env` and the backend was restarted; check `GET /api/v1/auth/providers`.
+**Questions never answer** → no chat model configured; see [step 8](#8-choose-an-answer-model).
