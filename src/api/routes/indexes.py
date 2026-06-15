@@ -159,8 +159,14 @@ def create_index(
     """Build a new named index from the currently-ingested corpus.
 
     Returns 202 with a job id immediately; poll /jobs/{id} or stream
-    /jobs/{id}/stream for progress. The corpus is re-embedded with the
-    pipeline's active embedder so the new index is self-consistent.
+    /jobs/{id}/stream for progress.
+
+    When the index targets the live embedder (same model + dimension — the
+    common case), the corpus embeddings computed at ingest are reused from the
+    default store instead of re-embedding the whole corpus, which is the slow
+    part of a build. We fall back to re-embedding when those vectors can't be
+    retrieved or a different embedding model is targeted, so the new index is
+    always self-consistent.
     """
     # Build from the pipeline's actual chunk records so the named index carries
     # identical chunk_ids + provenance — required for a correct live switch
@@ -195,12 +201,35 @@ def create_index(
         description=req.description,
     )
 
-    job = registry.submit(
-        "index_build", build_index_job, label=f"Build index {req.name}",
+    # Reuse the ingest-time embeddings instead of re-embedding the whole corpus
+    # when the index targets the live embedder (same model + dimension): those
+    # exact vectors already live in the default store. This skips Phase 1 of
+    # build_index_job — the slow part for large corpora. Fall back to
+    # re-embedding when the vectors can't be retrieved or the model differs.
+    build_kwargs: dict = dict(
         manager=manager, profile=profile, texts=texts, ids=ids, metadatas=metas,
-        embedder=pipeline.embedder, make_active=req.make_active, overwrite=req.overwrite,
+        make_active=req.make_active, overwrite=req.overwrite,
     )
-    logger.info("Enqueued index build job %s for index %r", job.id, req.name)
+    cached = None
+    if (profile.embedding_model == pipeline.embedder.model_name
+            and profile.vector_dimension == pipeline.embedder.dimension):
+        cached = pipeline.get_corpus_embeddings(ids)
+        if cached is not None and (
+            len(cached) != len(texts) or cached.shape[1] != pipeline.embedder.dimension
+        ):
+            cached = None  # shape drift vs the live corpus → don't trust it; recompute
+
+    if cached is not None:
+        build_kwargs["embeddings"] = cached
+        source = f"reusing {len(cached)} ingest-time embeddings"
+    else:
+        build_kwargs["embedder"] = pipeline.embedder
+        source = "re-embedding corpus"
+
+    job = registry.submit(
+        "index_build", build_index_job, label=f"Build index {req.name}", **build_kwargs,
+    )
+    logger.info("Enqueued index build job %s for index %r (%s)", job.id, req.name, source)
     return JobAcceptedResponse(
         job_id=job.id, type=job.type, status=job.status.value, request_id=request_id
     )

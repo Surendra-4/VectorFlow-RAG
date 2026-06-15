@@ -138,6 +138,58 @@ def test_create_index_runs_as_job(client):
     assert r2.json()["active"] == "flat_idx"
 
 
+def test_create_index_reuses_ingest_embeddings(client, pipeline, monkeypatch):
+    """The build must reuse the ingest-time vectors (no re-embedding) and the
+    resulting index must still switch + search correctly."""
+    calls = {"n": 0}
+    real_encode = pipeline.embedder.encode
+
+    def counting_encode(*a, **k):
+        calls["n"] += 1
+        return real_encode(*a, **k)
+
+    monkeypatch.setattr(pipeline.embedder, "encode", counting_encode)
+
+    jid = client.post("/api/v1/indexes",
+                      json={"name": "reuse_idx", "index_type": "flat"}).json()["job_id"]
+    job = _wait_job(client, jid)
+    assert job["status"] == "succeeded"
+    assert job["result"]["num_vectors"] == len(GOLDEN_DOCS)
+    # Phase 1 (re-embed) was skipped → the embedder was never invoked by the build.
+    assert calls["n"] == 0
+
+    # The reused-embedding index is self-consistent: it switches in and serves
+    # the same chunk-id space as the default store.
+    client.post("/api/v1/indexes/activate-default")
+    before = client.post("/api/v1/search", json={"query": "reciprocal rank fusion", "k": 3}).json()
+    assert client.post("/api/v1/indexes/reuse_idx/switch").status_code == 200
+    after = client.post("/api/v1/search", json={"query": "reciprocal rank fusion", "k": 3}).json()
+    assert after["results"][0]["chunk_id"] == before["results"][0]["chunk_id"]
+    client.post("/api/v1/indexes/activate-default")
+
+
+def test_create_index_falls_back_to_reembedding(client, pipeline, monkeypatch):
+    """When the cached vectors can't be retrieved, the build re-embeds the
+    corpus and still succeeds."""
+    monkeypatch.setattr(pipeline, "get_corpus_embeddings", lambda ids: None)
+    calls = {"n": 0}
+    real_encode = pipeline.embedder.encode
+
+    def counting_encode(*a, **k):
+        calls["n"] += 1
+        return real_encode(*a, **k)
+
+    monkeypatch.setattr(pipeline.embedder, "encode", counting_encode)
+
+    jid = client.post("/api/v1/indexes",
+                      json={"name": "fallback_idx", "index_type": "flat"}).json()["job_id"]
+    job = _wait_job(client, jid)
+    assert job["status"] == "succeeded"
+    assert job["result"]["num_vectors"] == len(GOLDEN_DOCS)
+    # Re-embed path ran → the embedder was invoked at least once during the build.
+    assert calls["n"] >= 1
+
+
 def test_create_index_no_corpus_400(client, tmp_path):
     # A fresh pipeline with nothing ingested.
     empty = RAGPipeline(index_dir=str(tmp_path / "empty"), enable_cache=False)

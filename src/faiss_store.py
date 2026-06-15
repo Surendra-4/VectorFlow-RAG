@@ -329,6 +329,40 @@ class FAISSVectorStore:
 
         return {"documents": documents, "distances": distances, "metadatas": metadatas, "ids": ids}
 
+    def get_embeddings(self, ids: Sequence[str]) -> Optional[np.ndarray]:
+        """Return stored embeddings for ``ids`` as a float32 ``(n, d)`` array,
+        aligned positionally to ``ids``; ``None`` if any are missing or the
+        index can't reconstruct vectors losslessly.
+
+        Reconstruction is exact for Flat/HNSW (full-vector storage) and the
+        default ingest-time store is one of those. Quantizing topologies
+        (IVF/PQ/OPQ) reconstruct only approximations, so any failure here falls
+        through to ``None`` and the caller recomputes rather than seeding a new
+        index with lossy vectors.
+        """
+        ids = list(ids)
+        if not ids or self.index is None:
+            return None
+        try:
+            positions: List[int] = []
+            for iid in ids:
+                pos = self._id_to_pos.get(iid)
+                if pos is None:
+                    return None
+                positions.append(pos)
+            # IVF needs an explicit direct map before reconstruct; Flat/HNSW
+            # don't expose this method (AttributeError → ignored).
+            try:
+                self.index.make_direct_map()
+            except Exception:
+                pass
+            vecs = [self.index.reconstruct(int(p)) for p in positions]
+            arr = np.asarray(vecs, dtype=np.float32)
+            return arr if arr.ndim == 2 else None
+        except Exception as exc:
+            logger.warning("FAISS get_embeddings failed (%s); caller will recompute", exc)
+            return None
+
     def delete_collection(self, name: Optional[str] = None) -> None:
         target_name = name or self.collection_name
         self._reset_in_memory()

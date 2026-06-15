@@ -83,6 +83,17 @@ class VectorStoreProtocol(Protocol):
         """
         ...
 
+    def get_embeddings(self, ids: Sequence[str]) -> Optional[np.ndarray]:
+        """Return stored embeddings for ``ids`` as a float32 ``(n, d)`` array,
+        aligned positionally to ``ids``.
+
+        Returns ``None`` when the exact stored vectors can't be reproduced —
+        any id is missing, or the backend can't reconstruct losslessly. Callers
+        treat ``None`` as "recompute the embeddings instead", so this must never
+        return approximate or mis-ordered vectors.
+        """
+        ...
+
     def delete_collection(self, name: Optional[str] = None) -> None: ...
 
     def get_stats(self) -> Dict[str, Any]: ...

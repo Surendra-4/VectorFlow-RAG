@@ -13,7 +13,10 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+
+if TYPE_CHECKING:
+    import numpy as np
 
 from src.bm25_retriever import BM25Retriever
 from src.cache.caching_embedder import CachingEmbedder
@@ -462,6 +465,29 @@ class RAGPipeline:
         ids = [r["chunk_id"] for r in self.chunk_records]
         metas = [r["metadata"] for r in self.chunk_records]
         return texts, ids, metas
+
+    def get_corpus_embeddings(self, ids: Sequence[str]) -> Optional["np.ndarray"]:
+        """Return the ingest-time embeddings for ``ids`` (aligned positionally),
+        or ``None`` if they can't be retrieved exactly.
+
+        These are the vectors the live embedder produced during ingest and that
+        back live retrieval — identical to what re-embedding the same chunks
+        with the same model would yield. A named index over the same corpus and
+        embedding model can reuse them instead of recomputing the whole corpus.
+
+        Reads from the *default* (ingest-time) store specifically: after a
+        switch, ``vector_store`` points at a named index that may use a lossy
+        topology (e.g. PQ), so its reconstructed vectors are not a safe source.
+        """
+        store = self._default_vector_store
+        getter = getattr(store, "get_embeddings", None)
+        if store is None or getter is None:
+            return None
+        try:
+            return getter(ids)
+        except Exception:
+            logger.warning("Could not fetch corpus embeddings from the default store", exc_info=True)
+            return None
 
     def _rebuild_hybrid_for(self, vector_store) -> None:
         """Point hybrid retrieval at ``vector_store``, keeping the BM25 index.

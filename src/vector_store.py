@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+import numpy as np
 from chromadb import PersistentClient
 from chromadb.config import Settings as ChromaSettings
 
@@ -158,6 +159,44 @@ class VectorStore:
             "metadatas": metadatas,
             "ids": ids,
         }
+
+    def get_embeddings(self, ids: Sequence[str]) -> Optional[np.ndarray]:
+        """Return stored embeddings for ``ids`` as a float32 ``(n, d)`` array,
+        aligned positionally to ``ids``; ``None`` if any are missing.
+
+        ChromaDB's ``.get()`` neither preserves the requested order nor errors
+        on unknown ids (it silently omits them), so we index the result by id
+        and re-emit in the requested order, returning ``None`` on the first
+        gap. Reads are batched to stay clear of backend per-query id limits on
+        large corpora.
+        """
+        ids = list(ids)
+        if not ids:
+            return None
+        try:
+            by_id: Dict[str, Any] = {}
+            batch = 1000
+            for start in range(0, len(ids), batch):
+                chunk = ids[start:start + batch]
+                res = self.collection.get(ids=chunk, include=["embeddings"])
+                got_ids = res.get("ids") or []
+                got_embs = res.get("embeddings")
+                if got_embs is None or len(got_embs) != len(got_ids):
+                    return None
+                for iid, emb in zip(got_ids, got_embs):
+                    by_id[iid] = emb
+
+            ordered = []
+            for iid in ids:
+                emb = by_id.get(iid)
+                if emb is None:
+                    return None
+                ordered.append(emb)
+            arr = np.asarray(ordered, dtype=np.float32)
+            return arr if arr.ndim == 2 else None
+        except Exception as exc:
+            logger.warning("get_embeddings failed (%s); caller will recompute", exc)
+            return None
 
     def get_stats(self):
         return {

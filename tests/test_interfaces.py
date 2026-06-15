@@ -43,6 +43,9 @@ class _MockVectorStore:
     def search(self, query_embedding, n_results: int = 5):
         return {"documents": self._docs[:n_results], "distances": [], "metadatas": []}
 
+    def get_embeddings(self, ids):
+        return None  # this mock doesn't retain vectors; None ⇒ "recompute"
+
     def delete_collection(self, name: Optional[str] = None) -> None:
         self._docs.clear()
 

@@ -72,6 +72,39 @@ def test_pipeline_retains_chunk_records(pipeline):
 
 
 # --------------------------------------------------------------------------- #
+# Ingest-time embedding reuse (index build optimization)
+# --------------------------------------------------------------------------- #
+
+
+def test_get_corpus_embeddings_matches_reembedding(pipeline):
+    """The reused vectors must equal what re-embedding the chunks produces, so
+    a named index built from them is identical to one built by re-embedding."""
+    texts, ids, _ = pipeline.iter_chunk_records()
+    reused = pipeline.get_corpus_embeddings(ids)
+    assert reused is not None
+    assert reused.shape == (len(texts), pipeline.embedder.dimension)
+
+    recomputed = np.asarray(
+        pipeline.embedder.encode(texts, show_progress=False, input_type="passage"),
+        dtype=np.float32,
+    )
+    assert np.allclose(reused, recomputed, atol=1e-6)
+
+
+def test_get_corpus_embeddings_aligns_to_requested_id_order(pipeline):
+    texts, ids, _ = pipeline.iter_chunk_records()
+    full = pipeline.get_corpus_embeddings(ids)
+    reversed_vecs = pipeline.get_corpus_embeddings(list(reversed(ids)))
+    assert reversed_vecs is not None
+    # Row i of the reversed request must equal row -(i+1) of the in-order one.
+    assert np.allclose(reversed_vecs, full[::-1], atol=1e-6)
+
+
+def test_get_corpus_embeddings_missing_id_returns_none(pipeline):
+    assert pipeline.get_corpus_embeddings(["no-such-chunk-id"]) is None
+
+
+# --------------------------------------------------------------------------- #
 # Activation swaps vector half, keeps BM25 + provenance
 # --------------------------------------------------------------------------- #
 

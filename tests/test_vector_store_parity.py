@@ -358,6 +358,55 @@ class TestLatencyComparison:
 # --------------------------------------------------------------------------- #
 
 
+class TestGetEmbeddings:
+    """``get_embeddings`` must return the *exact* stored vectors, aligned to the
+    requested id order, or ``None`` when any id is missing — the contract the
+    index-build reuse path relies on.
+    """
+
+    def _store(self, tmp_path, backend):
+        if backend == "chromadb":
+            store = VectorStore(persist_directory=str(tmp_path / backend))
+            store.create_collection(reset=True)
+        elif backend == "faiss-flat":
+            store = FAISSVectorStore(persist_directory=str(tmp_path / backend), index_type="flat")
+        else:
+            store = FAISSVectorStore(persist_directory=str(tmp_path / backend), index_type="hnsw")
+        return store
+
+    @pytest.mark.parametrize("backend", ["chromadb", "faiss-flat", "faiss-hnsw"])
+    def test_roundtrip_aligned_to_requested_order(self, tmp_path, backend):
+        store = self._store(tmp_path, backend)
+        corpus = _random_corpus(12, dim=64, seed=5)
+        ids = [f"c{i}" for i in range(len(corpus))]
+        store.add_documents(
+            texts=[f"doc_{i}" for i in range(len(corpus))], embeddings=corpus.tolist(), ids=ids
+        )
+
+        # Request in a scrambled order; result must align row-for-row to it.
+        scrambled = [ids[i] for i in (7, 0, 11, 3, 9, 1, 5, 2, 10, 4, 8, 6)]
+        got = store.get_embeddings(scrambled)
+        assert got is not None
+        assert got.shape == (len(scrambled), 64)
+        for row, iid in zip(got, scrambled):
+            assert np.allclose(row, corpus[ids.index(iid)], atol=1e-5), f"{backend} {iid}"
+
+    @pytest.mark.parametrize("backend", ["chromadb", "faiss-flat", "faiss-hnsw"])
+    def test_missing_id_returns_none(self, tmp_path, backend):
+        store = self._store(tmp_path, backend)
+        corpus = _random_corpus(4, dim=64, seed=6)
+        ids = [f"c{i}" for i in range(len(corpus))]
+        store.add_documents(texts=ids, embeddings=corpus.tolist(), ids=ids)
+        # A single unknown id in the batch poisons the whole request → None
+        # (the caller must recompute rather than silently build a short index).
+        assert store.get_embeddings(["c0", "ghost", "c1"]) is None
+
+    @pytest.mark.parametrize("backend", ["chromadb", "faiss-flat", "faiss-hnsw"])
+    def test_empty_ids_returns_none(self, tmp_path, backend):
+        store = self._store(tmp_path, backend)
+        assert store.get_embeddings([]) is None
+
+
 class TestPersistenceParity:
     """Both backends must keep state across instance reloads."""
 
