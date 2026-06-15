@@ -911,8 +911,6 @@ step-by-step in [`DEPLOYMENT.md`](DEPLOYMENT.md).
 - Reranker output caching (key builder already exists).
 - Per-namespace cache metrics; token-usage + system-resource collectors.
 - Team/RBAC tenancy + per-user corpora/indexes (stats already key on `user_id`).
-- Reuse stored corpus embeddings on index build (skip the re-embed when the
-  target embedding model matches the live one).
 - Agentic SSE event types (`tool_call`/`tool_result`) — the taxonomy extends
   cleanly.
 - JSONL trace persistence (wrap the recent-traces ring buffer).

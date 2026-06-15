@@ -14,6 +14,19 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+# ───────────────────────────────────────────────────────────────────────────
+# Hermetic test environment (set at import time — before any module builds
+# Settings). A developer's local `.env` is meant for running the app, not the
+# suite: a production `.env` carries VFR_AUTH__REQUIRED=true (which would 401
+# every API test that hits a gated endpoint without a token) and a live
+# DATABASE_URL (which would point the DB layer at a real database). Env vars
+# take precedence over `.env` in pydantic-settings, so these win; `setdefault`
+# still lets an explicit shell export override them when intentionally testing
+# those modes.
+# ───────────────────────────────────────────────────────────────────────────
+os.environ.setdefault("VFR_AUTH__REQUIRED", "false")
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{tempfile.gettempdir()}/vfr_pytest.db")
+
 # ═══════════════════════════════════════════════════════════════════════════
 # PYTEST CONFIGURATION & MARKER REGISTRATION
 # ═══════════════════════════════════════════════════════════════════════════
