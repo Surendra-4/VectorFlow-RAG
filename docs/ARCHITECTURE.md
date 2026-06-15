@@ -4,9 +4,12 @@ Local-first, provenance-aware hybrid RAG platform. This document is the
 single reference for how the system is put together end to end. It is
 **local documentation** — no remote publishing implied.
 
-> Status: as of Phase 11 (multilingual). Backend: Python / FastAPI.
-> Frontend: Next.js 14 (App Router). Vector backends: ChromaDB (default)
-> and FAISS HNSW. All inference is local (Ollama LLM + sentence-transformers).
+> Status: current through Phase 14 (authentication & multi-user; free
+> self-hosted deployment). Backend: Python 3.11 / FastAPI. Frontend: Next.js 14
+> (App Router). Vector backends: ChromaDB (default) and FAISS (11 recipes).
+> Answer model: local Ollama **or** a hosted provider (OpenAI/Anthropic/Gemini/
+> Groq/OpenRouter). Accounts + per-user stats in Postgres/SQLite. Deploys for ₹0
+> (your machine behind a free tunnel + Vercel) — see [`../DEPLOYMENT.md`](../DEPLOYMENT.md).
 
 ---
 
@@ -336,16 +339,84 @@ ModelProvider registry ──► pipeline.set_chat_provider()   SecretStore (var
 
 ---
 
+## 8.6 Authentication & multi-user  [Phase 14]
+
+Phase 14 adds accounts on top of the stateless service. It is **opt-in**: with
+`VFR_AUTH__REQUIRED=false` (local/test default) data endpoints stay open and
+stats attach to a user only when a token is present; with `true` (production)
+the data endpoints require a valid JWT. The retrieval pipeline itself is
+unchanged — anonymous/local behavior is byte-identical to pre-Phase-14.
+
+**Identity & sessions (`src/auth/`).** Passwords are bcrypt-hashed (clipped to
+72 bytes); sessions are HS256 **JWTs** (PyJWT) signed with `VFR_AUTH__JWT_SECRET`.
+The hash is never returned by any endpoint. `get_optional_user` is *lazy* — it
+only opens a DB session when a Bearer token is present, so the anonymous path
+pays nothing.
+
+**OAuth (`src/auth/oauth.py`).** Google + GitHub via the OAuth 2.0
+authorization-code flow, implemented directly over `requests` (no SDK). CSRF is
+covered by a `SameSite=Lax`, `HttpOnly` state cookie whose `Secure` flag derives
+from the `https` scheme of `VFR_AUTH__PUBLIC_BASE_URL`. The callback redirects to
+the frontend with the JWT in the URL fragment (`/auth/callback#access_token=…`).
+An unconfigured provider is simply unavailable (the frontend hides its button).
+
+**Database (`src/db/`).** SQLAlchemy 2.0 over `DATABASE_URL` — Postgres in prod
+(Render/Heroku `postgres://` is normalized to `postgresql+psycopg2`), SQLite
+locally by default. Two tables only: `users` and `user_stats`. **Ingested
+documents are never stored here** — only accounts and per-user counters
+(searches/asks/retrievals/documents/chunks…), with a self-service reset. Counter
+bumps are fire-and-forget (`record_for_user_id`) and never raise into a request.
+
+**Provider secrets (`src/providers/secrets.py`).** Online-provider API keys live
+in a server-side `SecretStore`, Fernet-encrypted at rest (key from
+`VFR_SECRET_KEY` or an auto-generated `0600` keyfile), `0600` file perms, values
+never logged. The API exposes only `configured: bool` + a redacted hint.
+
+```
+request ─► get_optional_user (lazy: DB only if Bearer present)
+              │
+   require_user_if_enabled ── gates data routes ONLY when auth.required=True
+              │
+        record_for_user_id(user, searches=…, retrievals=…)  # fire-and-forget
+users + user_stats  ──►  Postgres (prod) / SQLite (local)   # never documents
+```
+
+---
+
 ## 9. Deployment topology
 
-| Mode | Backend | Frontend | Cache | Notes |
-|---|---|---|---|---|
-| Local dev | `uvicorn --reload` :8000 | `npm run dev` :3000 | memory | default |
-| Local production | `uvicorn --workers N` | `next build && start` | Redis (shared) | single host |
-| Hosted lightweight | user-run backend | Vercel build | memory/Redis | per-user backend URL via Settings/localStorage |
-| Desktop | Python sidecar | `OUTPUT=export` static `./out` | memory | Tauri/Electron shell |
+The heavy ML stack (PyTorch + sentence-transformers + FAISS, ~1 GB RAM) runs on
+**your machine**; only the lightweight frontend is hosted. The primary, ₹0
+topology:
 
-CORS allows `http://localhost:3000` by default (`VFR_API__CORS_ORIGINS`).
+```
+Browser ──► Vercel (Next.js)  ──HTTPS──►  free tunnel (ngrok static domain)
+                                              │
+                                       your Mac: uvicorn 127.0.0.1:8000
+                                       FastAPI + RAGPipeline (torch/FAISS)
+                                              │ SQLAlchemy (TLS)
+                                       Neon/Supabase Postgres  (accounts + stats)
+```
+
+| Mode | Backend | Frontend | DB | Notes |
+|---|---|---|---|---|
+| **Hosted (free)** | your Mac via **ngrok**/Cloudflare tunnel | **Vercel** | Neon/Supabase free | the documented production path; `VFR_AUTH__REQUIRED=true` |
+| Local dev | `python -m src.api` :8000 | `npm run dev` :3000 | SQLite | auth off by default |
+| Rented server | `uvicorn --factory --host 0.0.0.0 --port $PORT` (≥2 GB RAM) | Vercel/static | Postgres | if you prefer always-on over self-host |
+| Desktop | Python sidecar | `OUTPUT=export` static `./out` | SQLite | Tauri/Electron shell |
+
+`cloudflared`/`ngrok` open an **outbound** tunnel — no router ports, home IP not
+exposed. `NEXT_PUBLIC_API_BASE_URL` (build-time) points the frontend at the
+tunnel; `VFR_API__CORS_ORIGINS` must list the exact Vercel origin; OAuth callback
+URLs are `{VFR_AUTH__PUBLIC_BASE_URL}/api/v1/auth/{provider}/callback`. A stable
+hostname (ngrok free static domain) makes OAuth + the frontend link one-time
+setups; an ephemeral Quick Tunnel works but must be re-pointed each session.
+Full runbook: [`../DEPLOYMENT.md`](../DEPLOYMENT.md).
+
+**macOS note:** the package caps `OMP_NUM_THREADS=1` on Darwin (`src/__init__.py`)
+because PyTorch and faiss-cpu each bundle an OpenMP runtime and training a FAISS
+IVF/PQ index from a job thread with torch loaded segfaults otherwise. Zero cost
+to MPS (GPU) embedding; Linux deployments keep full multi-threading.
 
 ---
 
@@ -365,7 +436,7 @@ CORS allows `http://localhost:3000` by default (`VFR_API__CORS_ORIGINS`).
 
 ## 11. Known limitations
 
-- **No auth / multi-user** — single-tenant local-first only.
+- **Auth is account-level, not team/RBAC** — every user is independent; no roles, sharing, or org tenancy. The corpus/index are process-global (shared by all users of one instance), while accounts + stats are per-user.
 - **Synchronous ingestion** blocks an HTTP worker for large corpora.
 - **No rate limiting** — public deployments need hardening (file-size guard is the only current protection).
 - **No conversation persistence** — chat is single-turn, in-memory.
@@ -384,7 +455,7 @@ CORS allows `http://localhost:3000` by default (`VFR_API__CORS_ORIGINS`).
 - **Incremental indexing & dedup** — stable chunk_ids make upsert-by-id and content-hash dedup mechanical.
 - **Reranker output caching** — key builder exists; wiring is one step.
 - **Per-namespace cache metrics** — emit `cache_ops_total{namespace, op}` from each wrapper.
-- **Auth + multi-user** — request_id propagation and per-doc IDs already support tenant prefixing.
+- **Team/RBAC tenancy** — accounts exist; roles, sharing, and per-user corpora/indexes (the schema already keys stats by `user_id`) are the next step.
 - **Conversation persistence** — `useStreamingAsk` state is serializable; lift into a store + `/conversations` endpoint.
 - **Agentic events** — SSE taxonomy extends cleanly with `tool_call`/`tool_result`.
 - **JSONL trace persistence** — wrap the recent-traces ring buffer to also append to disk.
@@ -411,6 +482,9 @@ CORS allows `http://localhost:3000` by default (`VFR_API__CORS_ORIGINS`).
 | Runtime config (live vs staged) | `src/runtime_config.py` |
 | Named indexes / recipes / compat | `src/indexing/` (profile, registry, manager, recipes, compatibility, benchmark) |
 | Background jobs | `src/jobs/` (base, registry, index_jobs) |
+| Authentication | `src/auth/` (security/JWT, service, oauth, emails) |
+| Database (accounts + stats) | `src/db/` (models, session, base) |
+| Provider secret store | `src/providers/secrets.py` (Fernet-encrypted) |
 | Loaders | `src/loaders/` (base, registry, per-format) |
 | Cache | `src/cache/` (memory, redis, null, safe, codec, keys, factory, caching_embedder, caching_expansion) |
 | Observability | `src/observability/` (primitives, registry, prometheus_export), `src/retrieval_trace.py` |

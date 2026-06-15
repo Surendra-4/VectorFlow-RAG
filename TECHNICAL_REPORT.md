@@ -30,7 +30,13 @@ skimmed [`README.md`](README.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.
 18. [Performance & scaling math](#18-performance--scaling-math)
 19. [Failure modes & graceful degradation](#19-failure-modes--graceful-degradation)
 20. [Testing strategy](#20-testing-strategy)
-21. [Limitations & future work](#21-limitations--future-work)
+21. [Model providers & runtime configuration](#21-model-providers--runtime-configuration)
+22. [Named indexes, FAISS recipes & benchmarking](#22-named-indexes-faiss-recipes--benchmarking)
+23. [Background jobs & the macOS OpenMP guard](#23-background-jobs--the-macos-openmp-guard)
+24. [Live index switching](#24-live-index-switching)
+25. [Authentication, accounts & multi-user](#25-authentication-accounts--multi-user)
+26. [Deployment & operations](#26-deployment--operations)
+27. [Limitations & future work](#27-limitations--future-work)
 
 ---
 
@@ -642,14 +648,19 @@ feature, never the whole service.**
 
 ## 20. Testing strategy
 
-- **~696 backend tests** (pytest), **62 frontend** (Vitest). Dual-backend
-  validation (ChromaDB + FAISS) for retrieval/identity/loaders/expansion/cache.
+- **975 backend tests** (pytest; 904 test functions across 58 files), **79
+  frontend** (Vitest) — **1,050+ total.** Dual-backend validation (ChromaDB +
+  FAISS) for retrieval/identity/loaders/expansion/cache.
 - **Unit:** RRF math, identity hashing, cache primitives, normalization fixtures,
-  format loaders, observability primitives.
+  format loaders, observability primitives, recipe validation/estimation, JWT +
+  password hashing, OAuth URL/exchange (mocked).
 - **Integration:** end-to-end pipeline (retrieval quality, identity propagation,
-  loader→pipeline, expansion, cache, multilingual retrieval), API contracts.
+  loader→pipeline, expansion, cache, multilingual retrieval), API contracts,
+  auth API (signup/login/me/reset), per-user stats, index build/benchmark jobs,
+  live index switching + compatibility gating.
 - **Safety:** prompt-injection defenses, encoding-safety across all serialization
-  boundaries, Redis-unavailable fallback (via `fakeredis`).
+  boundaries, Redis-unavailable fallback (via `fakeredis`), the macOS
+  FAISS-thread-safety guard (subprocess regression test), secret-store redaction.
 - **Performance:** observability-overhead microbenchmarks (the one test that
   flakes under parallel-suite CPU load — passes at 0.66 µs/op in isolation).
 - **Markers:** `integration` and `slow` tests (live Ollama / real model loads)
@@ -657,11 +668,230 @@ feature, never the whole service.**
 
 ---
 
-## 21. Limitations & future work
+## 21. Model providers & runtime configuration
+
+**The problem.** v1 hardcoded a single local `OllamaClient`. Production wants the
+answer model to be either fully local (privacy/offline) *or* a hosted API
+(quality on demand), **switchable at runtime without a restart**, and it must
+never leak an API key to the browser. Phase 12 adds this as a layer *on top of*
+the immutable env baseline, so default behavior stays byte-identical.
+
+**Provider abstraction (`src/providers/`).** One `ModelProvider` interface with
+`generate` / `stream_generate` that **keep the legacy `OllamaClient` signatures**
+— so `pipeline.llm` can be any provider with zero call-site changes.
+`ProviderCapabilities` (location `offline|online`, `requires_api_key`,
+`supports_streaming`, `supports_model_listing`, …) is the only thing the frontend
+sees. Backends: `ollama` (offline); `openai_compat` (OpenAI, Groq, OpenRouter —
+all OpenAI-wire-compatible); `anthropic` (`x-api-key`); `gemini` (key in query).
+A shared `online_base` centralizes HTTP, SSE parsing, retries, and error mapping.
+Crucially, `ChatModelConfig` has **no `api_key` field** — keys are injected by the
+registry factory at construction time and held only on the instance.
+
+**Secret store (`src/providers/secrets.py`).** API keys persist server-side only,
+**Fernet-encrypted at rest** (key from `$VFR_SECRET_KEY` or an auto-generated
+`0600` keyfile beside the store), file mode `0600`, values never logged. The API
+exposes exactly `{configured: bool, hint: "****abcd"}` — never the key. If
+`cryptography` is missing it degrades to base64 obfuscation with a one-time
+warning (still never plaintext-at-rest in normal operation).
+
+**Runtime config (`src/runtime_config.py`).** Settings split into two classes:
+- **live-query** — provider/model, reranker, expansion, RRF `k`/candidates, cache
+  — applied to the running pipeline immediately (`apply_live_settings`).
+- **index-construction** — embedding model, chunk size/overlap, vector backend,
+  FAISS topology — **staged only**; a change here *never silently rebuilds* an
+  index, it sets a `rebuild_required` flag that drives the UI.
+
+Persisted to `var/runtime_config.json`. On boot `_apply_runtime_config_to_pipeline`
+is **idempotent and parity-preserving**: when the snapshot matches the env
+baseline (fresh installs), it's a no-op and the default `OllamaClient` stays in
+place — so English/default behavior is unchanged.
+
+---
+
+## 22. Named indexes, FAISS recipes & benchmarking
+
+**Indexes as first-class entities (`src/indexing/`).** `IndexProfile` is an
+identity-bearing record (embedding model + dimension, backend, `index_type`,
+build/search params, `corpus_fingerprint`, chunk size/overlap, measured metrics).
+`IndexRegistry` persists profiles to `var/index_registry.json` with an *active*
+pointer; index data lives under `indices/named/<name>/`. `IndexManager` does
+create / load / switch / delete / export / import.
+
+**Recipe layer (`src/indexing/recipes.py`).** 11 FAISS recipes — `flat`, `hnsw`,
+`ivf`, `pq`, `ivf_pq`, `ivf_hnsw`, `hnsw_pq`, `opq_ivf_pq`, `imi`,
+`index_refine_flat`, `multi_d_adc` — each a builder that turns
+`(recipe, params, dim)` into a validated `faiss.index_factory` string
+(e.g. `IVF100,PQ8x8`, `OPQ8,IVF100,PQ8x8`). Per-param metadata
+(`min/max/default/group`) drives the builder UI directly.
+
+**Validation (`validate_recipe`)** runs in layers and returns a structured
+result the UI consumes:
+1. static param checks (e.g. `nprobe ≤ nlist`);
+2. **soft warnings** — FAISS prefers ≈39×`nlist` training points;
+3. **hard training-floor error** — when `n_vectors < min_training_points`
+   (`max(nlist, 2^pq_nbits, 2^imi_nbits)`); IVF/PQ *training* raises FAISS's
+   `nx >= k` otherwise, so the builder must reject it (it can't be trained), not
+   merely warn;
+4. final **FAISS construction check** — actually call `index_factory(dim, …)` on
+   the empty index, so the factory string is provably legal.
+
+Plus an analytical **estimate** (bytes/vector × n + codebook/coarse overheads,
+latency class, training cost, `min_training_points`).
+
+**Benchmarking (`src/indexing/benchmark.py`).** Scores recipes *without labels*:
+an exact **Flat** index over the same vectors is the ground truth, and each
+approximate recipe is graded by how well it reproduces the exact top-k —
+Recall@K, MRR, latency p50/p95, QPS, on-disk size. It is **resilient**: a recipe
+that can't build on this corpus is *skipped* (recording `{recipe, reason}`) so one
+bad recipe doesn't sink the sweep; the job fails only if *every* recipe is
+unbuildable. Artifacts are schema-versioned under `experiments/artifacts/`. A real
+run (n=3,489, dim=384, k=10) measured: flat R@10 1.000 / 6.1k QPS / 5.5 MB; hnsw
+0.998 / 7.7k QPS; ivf 0.954 / 17.9k QPS; ivf_pq 0.536 / 14.6k QPS / **0.75 MB**
+(≈7× compression) — the recall/latency/memory frontier on real data.
+
+**Compatibility validator (`compatibility.py`).** Grades a config delta
+**BLOCKING** (different vector space → must create a new index) / **REBUILD**
+(same vectors, rebuild needed) / **INFO**, which powers the structured `409`
+"create a new index?" safety UX. Nothing mutates silently.
+
+---
+
+## 23. Background jobs & the macOS OpenMP guard
+
+**Why jobs (`src/jobs/`).** A FAISS build/train or a multi-recipe benchmark is
+seconds-to-minutes — it must not block an HTTP worker. `JobRegistry` wraps a
+`ThreadPoolExecutor`; `submit` returns a `Job`; `JobContext` gives
+`set_progress(pct, msg)` + `check_cancel()` (cooperative cancellation). The API
+returns **`202 + job_id`** and the UI replays `/jobs/{id}/stream` (SSE) from a
+per-job event log, with bounded history and a metrics hook on terminal states.
+
+**The macOS OpenMP segfault — a worked debugging story.** Building an IVF/PQ
+index on a real corpus *crashed the whole process* with `SIGSEGV` (not a
+catchable exception). Isolated repros pinned it precisely:
+- FAISS train **in a worker thread, no torch loaded** → fine.
+- FAISS train **on the main thread, torch loaded** → fine.
+- FAISS train **in a worker thread with torch loaded** → **SIGSEGV.**
+
+Root cause: PyTorch and faiss-cpu each **bundle their own OpenMP runtime**; on
+macOS, entering faiss's IVF/PQ-training OpenMP parallel region from a *non-main*
+thread while torch's libomp is loaded segfaults. Mitigations tested:
+`faiss.omp_set_num_threads(1)` at runtime — *too late* (runtime already
+initialized); `KMP_DUPLICATE_LIB_OK=TRUE` — *worse*; **`OMP_NUM_THREADS=1` set
+before the runtimes initialize — fixes it.** So `src/__init__.py` caps
+`OMP_NUM_THREADS=1` via `setdefault`, **scoped to Darwin** (Linux keeps full
+threading), at the very top of the package import. Measured **zero cost** to MPS
+embedding (GPU-bound — even marginally faster). A subprocess regression test
+(`tests/test_faiss_thread_safety.py`) builds an IVF/PQ index in a worker thread
+with torch loaded and asserts the child exits 0. Two related hardening fixes ship
+alongside: validation now hard-errors below the training floor (so a too-small
+corpus disables *Build* with a clear reason instead of a job-time crash), and the
+benchmark skips-and-continues per recipe.
+
+---
+
+## 24. Live index switching
+
+A named index built/benchmarked in Phase 12 can be promoted to serve **live**
+retrieval at runtime (Phase 13) — without breaking provenance.
+
+**The invariant that makes it safe.** Hybrid retrieval joins vector + BM25 on
+`chunk_id`, and citations read chunk metadata. So a named index is built from the
+pipeline's *actual* chunk records (`iter_chunk_records` → identical `chunk_id` +
+provenance), never a fresh re-chunk. The switch
+(`activate_named_index`) swaps **only the vector half** of `HybridRetriever`
+(`_rebuild_hybrid_for`) and keeps the existing BM25 index — which is keyed on the
+same `chunk_id` set, so the fusion join still holds and citations still resolve.
+
+**Compatibility-gated.** The candidate index must match the live embedder
+(model + dimension) and `corpus_fingerprint`; otherwise the API returns a
+structured **`409`** with the compatibility report ("create a new index?")
+instead of switching into a broken join. `activate_default_index()` reverts to
+the ingestion-time store; re-ingestion resets activation; `active_index_name`
+participates in the **retrieval-cache key** so cached results never leak across
+indexes.
+
+---
+
+## 25. Authentication, accounts & multi-user
+
+**Opt-in by construction.** `VFR_AUTH__REQUIRED=false` (local/test default) keeps
+data endpoints open and attributes stats to a user only when a token is present;
+`true` (production) requires a valid JWT on data routes. The retrieval pipeline is
+untouched — anonymous behavior is byte-identical to pre-Phase-14.
+
+**Credentials & sessions (`src/auth/`).** Passwords are **bcrypt**-hashed
+(clipped to 72 bytes); the hash is never returned by any endpoint. Sessions are
+**HS256 JWTs** (PyJWT) — subject = user id, 7-day expiry, signed with
+`VFR_AUTH__JWT_SECRET`. `get_optional_user` is **lazy**: it opens a DB session
+only when a Bearer token is present, returns a detached user
+(`expire_on_commit=False`), and never raises — so the anonymous/local path pays
+nothing.
+
+**OAuth (`src/auth/oauth.py`).** Google + GitHub via the OAuth 2.0
+authorization-code flow, hand-rolled over `requests` (no Authlib/SDK). CSRF is a
+`SameSite=Lax`, `HttpOnly` state cookie, path-scoped to the callback, with
+`Secure` derived from the `https` scheme of `VFR_AUTH__PUBLIC_BASE_URL`. The
+callback verifies state, exchanges the code, upserts the user, and redirects to
+`{frontend}/auth/callback#access_token=…` (JWT in the fragment, never a query
+param). GitHub private-email is resolved via `/user/emails`. An unconfigured
+provider is simply unavailable (the frontend hides its button via
+`GET /auth/providers`).
+
+**Database (`src/db/`).** SQLAlchemy 2.0 over `DATABASE_URL`: `postgres://` /
+`postgresql://` are normalized to `postgresql+psycopg2`; SQLite is the local
+default (`check_same_thread=False`, `pool_pre_ping`). Exactly two tables —
+`users` (uuid pk, unique email, nullable `password_hash`, `provider`, avatar,
+reset token + expiry) and `user_stats` (per-user counters: searches, asks,
+retrievals, documents, chunks, cache hits, tokens; `reset_at`). **Ingested
+documents are never stored** — only accounts and statistics, with a self-service
+reset. Counter bumps go through `record_for_user_id` — its own session,
+guarded, fire-and-forget, so a stats write can never fail a user's request.
+
+**Request dependencies (`src/api/dependencies.py`).** `get_optional_user`
+(lazy, never raises) · `get_current_user` (401) · `require_user_if_enabled`
+(gates a data route *only* when `auth.required`). Search/ask/ingest each record
+the signed-in user's own counters.
+
+---
+
+## 26. Deployment & operations
+
+**Topology (the documented ₹0 path).** The ML stack (PyTorch + sentence-
+transformers + FAISS, ~1 GB RAM) runs on **your machine**; only the lightweight
+frontend is hosted. Frontend → **Vercel** (free); backend → your Mac behind a
+**free tunnel** (an **ngrok** free *static domain* for a stable URL, or a
+Cloudflare Quick Tunnel); accounts + stats → free **Postgres** (Neon/Supabase) or
+local **SQLite**; answer model → local **Ollama** or a hosted-provider key.
+`cloudflared`/`ngrok` open an *outbound* tunnel — no router ports, home IP not
+exposed.
+
+**What needs a stable hostname, and what doesn't.** Email/password auth, the JWT,
+the OAuth state cookie, and CORS (which allow-lists the *Vercel* origin, not the
+backend URL) all work behind an **ephemeral** tunnel URL. Only two things want a
+*stable* hostname: the build-time `NEXT_PUBLIC_API_BASE_URL` (the frontend → API
+link) and the **OAuth redirect URIs** (`{public_base_url}/api/v1/auth/{provider}
+/callback`, which the provider must match exactly). An ngrok free static domain
+gives that stability at ₹0, making OAuth + the frontend a one-time setup.
+
+**Operational env surface.** `VFR_AUTH__REQUIRED`, `VFR_AUTH__JWT_SECRET`,
+`VFR_AUTH__PUBLIC_BASE_URL` (OAuth callbacks + cookie `Secure`),
+`VFR_AUTH__FRONTEND_URL`, `VFR_API__CORS_ORIGINS`, `DATABASE_URL`,
+`VFR_SECRET_KEY`, and the OAuth client id/secret pairs. A rented box (≥2 GB RAM)
+runs the same code with `uvicorn src.api.app:create_app --factory --host 0.0.0.0
+--port $PORT`. The macOS OpenMP guard (§23) applies to local Mac operation.
+Ingested documents live in `indices/` on the host (re-ingest after restart — by
+design, they're never in the DB); accounts + stats are durable in Postgres. Full
+step-by-step in [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
+---
+
+## 27. Limitations & future work
 
 **Current limitations** (also in the README, expanded here):
-- **No auth / multi-user.** Single-tenant local-first. Request-id propagation and
-  per-doc IDs already support tenant prefixing when this is built.
+- **Account-level auth, not team/RBAC.** Users are independent — no roles,
+  sharing, or org tenancy; the corpus/index are process-global (shared by an
+  instance's users) while accounts + stats are per-user. The schema already keys
+  stats by `user_id`, so per-user corpora/indexes are the natural next step.
 - **Synchronous ingestion.** Large corpora block an HTTP worker. Loaders are
   isolated from indexing and `_chunks_from_loaded_document` is pure, so an
   async/queued ingestor wraps the current API without restructuring.
@@ -680,7 +910,9 @@ feature, never the whole service.**
 - Incremental indexing & content-hash dedup (stable IDs make upsert mechanical).
 - Reranker output caching (key builder already exists).
 - Per-namespace cache metrics; token-usage + system-resource collectors.
-- Runtime model-switch endpoint (settings page is read-only today).
+- Team/RBAC tenancy + per-user corpora/indexes (stats already key on `user_id`).
+- Reuse stored corpus embeddings on index build (skip the re-embed when the
+  target embedding model matches the live one).
 - Agentic SSE event types (`tool_call`/`tool_result`) — the taxonomy extends
   cleanly.
 - JSONL trace persistence (wrap the recent-traces ring buffer).

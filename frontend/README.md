@@ -1,8 +1,9 @@
 # VectorFlow-RAG Frontend
 
-Next.js 14 App Router frontend for the VectorFlow-RAG backend. TypeScript +
-Tailwind, no global state library, no UI kit, no analytics, no cloud
-dependencies. All pages talk to the FastAPI backend over typed HTTP.
+Next.js 14 (App Router) frontend for the VectorFlow-RAG backend. TypeScript +
+Tailwind, a custom aurora design system (no UI kit), no global-state library, no
+analytics, no cloud lock-in. Every page talks to the FastAPI backend over a
+single typed HTTP contract.
 
 ## Quick start
 
@@ -12,9 +13,14 @@ npm install
 npm run dev                          # → http://localhost:3000
 ```
 
-Backend must be reachable at `NEXT_PUBLIC_API_BASE_URL` (default
-`http://localhost:8000`). The frontend's Settings page also lets users
-override the backend URL at runtime via localStorage.
+The backend must be reachable at `NEXT_PUBLIC_API_BASE_URL` (default
+`http://localhost:8000`). For a hosted deploy this is your tunnel URL (e.g. an
+ngrok static domain). You can also override the backend at runtime, no rebuild,
+from the browser console:
+
+```js
+localStorage.vfr_api_base_url = "https://your-backend"
+```
 
 ## Scripts
 
@@ -23,95 +29,109 @@ npm run dev         # dev server (HMR)
 npm run build       # production build
 npm run start       # serve the build
 npm run typecheck   # tsc --noEmit
-npm run test        # vitest (component + unit)
-npm run test:watch  # vitest in watch mode
+npm run test        # vitest (component + unit) — 79 tests
 npm run lint        # next lint
 ```
 
-## Static export (for desktop packaging)
+## Authentication & routing
 
-```
-OUTPUT=export npm run build
-# produces ./out — serveable from any static host or sidecar process
-```
+The app is gated. `AppFrame` decides between full-bleed **auth screens** and the
+authenticated app shell:
+
+- **Auth routes** (`/login`, `/signup`, `/reset`, `/auth/callback`) render a
+  Render-inspired split-screen with email/password + **Continue with Google /
+  GitHub** (the social buttons appear only when the backend reports the provider
+  configured).
+- **Protected routes** redirect anonymous visitors to `/login?next=…`. A JWT is
+  held in `localStorage`, attached as `Authorization: Bearer …` by the API
+  client, and cleared automatically on any `401` (which bounces back to login).
+- OAuth uses a top-level navigation to the backend; the callback returns the JWT
+  in the URL fragment, which `/auth/callback` adopts.
+
+When `VFR_AUTH__REQUIRED=false` (local default) the data endpoints stay open and
+the gate is permissive; in production (`true`) login is required.
 
 ## Pages
 
-| Route          | Purpose                                                       |
-|----------------|---------------------------------------------------------------|
-| `/`            | Chat with streaming SSE answers + citations                   |
-| `/search`      | Retrieval-only mode with full provenance                      |
-| `/ingest`      | Drag-and-drop file upload + paste-text ingestion              |
-| `/documents`   | Indexed documents grouped by stable `doc_id`                  |
-| `/dashboard`   | Live metrics (counters, latencies, cache, request breakdown)  |
-| `/traces`      | Recent retrieval traces with expandable JSON detail           |
-| `/settings`    | Pipeline status, cache controls, backend-URL override         |
+| Route            | Purpose                                                            |
+|------------------|-------------------------------------------------------------------|
+| `/login` `/signup` `/reset` | Authentication (email/password + Google/GitHub OAuth)  |
+| `/`              | Chat with streaming SSE answers + citations                       |
+| `/search`        | Retrieval-only mode with full provenance                          |
+| `/ingest`        | Drag-and-drop file upload + paste-text ingestion                  |
+| `/documents`     | Indexed documents grouped by stable `doc_id`                      |
+| `/dashboard`     | Per-user activity (with reset) + live process metrics + traces    |
+| `/traces`        | Recent retrieval traces with expandable JSON detail               |
+| `/settings`      | Pipeline status, **model providers**, **named indexes + benchmark**, jobs, cache, backend-URL override |
 
 ## Architecture
 
 ```
 src/
-├── app/                   # Next.js App Router pages
-│   ├── layout.tsx         # root layout, theme, header, footer
-│   ├── error.tsx          # global error boundary
+├── app/                   # App Router pages (incl. login/signup/reset/auth/callback)
+│   ├── layout.tsx         # aurora background + AuthProvider + AppFrame
 │   └── <page>/page.tsx
 ├── components/
-│   ├── ui/                # Button, Card, Input, Badge, Spinner, ErrorBox
-│   ├── layout/            # Header, StatusBadge
-│   ├── chat/              # ChatInterface, MessageBubble, LatencyChip
-│   ├── ingest/            # IngestForm, DropZone, IngestSummary
-│   ├── search/            # SearchForm
-│   ├── citations/         # SourcePanel
-│   └── dashboard/         # MetricsPanel, TraceTable, DocumentsTable, SettingsPanel
+│   ├── ui/                # Button, Card, Input, Badge, Spinner, ErrorBox, StatCard, motion primitives
+│   ├── brand/             # Logo / wordmark, Constellation canvas hero
+│   ├── auth/              # AuthShell, AuthCard, ResetCard, SocialButtons, brand icons
+│   ├── layout/            # AppFrame (auth gate + theme), Header (nav + UserMenu + ThemeToggle)
+│   ├── chat/ · search/ · ingest/ · citations/
+│   ├── dashboard/         # UserStatsPanel, MetricsPanel, TraceTable, DocumentsTable
+│   └── settings/          # Providers/ModelsTab, IndexesTab, IndexBuilder, BenchmarkPanel, …
 └── lib/
-    ├── api/               # typed API client (one module per resource)
-    │   ├── client.ts      # fetch wrapper with structured errors
-    │   ├── errors.ts      # ApiError class
+    ├── api/               # typed client (one module per resource)
+    │   ├── client.ts      # fetch wrapper: base-URL resolution, bearer auth, ngrok-skip header, structured errors
     │   ├── sse.ts         # SSE parser for fetch-based streams
     │   ├── types.ts       # TS types mirroring backend Pydantic schemas
-    │   └── <resource>.ts
-    ├── hooks/             # useApi, usePolling, useStreamingAsk, useTheme
+    │   └── auth.ts · indexes.ts · jobs.ts · models.ts · …
+    ├── auth/              # token store + AuthContext (status, user, login/signup/logout, OAuth adopt)
+    ├── hooks/             # useApi, usePolling, useStreamingAsk, useJobProgress, useTheme
     └── utils/             # format helpers, cn
 ```
 
-## Deployment topology
+The frontend never imports backend code and never assumes a colocated backend.
+The only contract is the typed schemas in `src/lib/api/types.ts`.
 
-| Scenario                         | How it runs                                                          |
-|----------------------------------|----------------------------------------------------------------------|
-| Local dev                        | `npm run dev` + Python backend on localhost                          |
-| Local production                 | `npm run build && npm run start` + Python backend on localhost       |
-| Vercel (hosted lightweight)      | Vercel build + user-supplied backend URL                             |
-| Desktop (Tauri / Electron)       | `OUTPUT=export npm run build`, ship `./out` + Python sidecar         |
+## Deployment (Vercel)
 
-The frontend never imports backend code and never assumes a colocated
-backend. The only contract is the typed schemas in `src/lib/api/types.ts`.
+1. Import the repo and **set the Root Directory to `frontend`** (the app lives in
+   this subfolder).
+2. Framework auto-detects as Next.js; leave build/output at defaults
+   (`vercel.json` pins the framework + adds baseline security headers).
+3. Set `NEXT_PUBLIC_API_BASE_URL` to your backend tunnel URL. It is inlined at
+   **build time**, so changing it later requires a redeploy.
 
-## Internationalization & rendering (Phase 11)
+| Scenario                    | How it runs                                                   |
+|-----------------------------|---------------------------------------------------------------|
+| Local dev                   | `npm run dev` + Python backend on localhost                   |
+| Hosted (free)               | Vercel build + backend on your Mac via a free tunnel (ngrok)  |
+| Desktop (Tauri / Electron)  | `OUTPUT=export npm run build`, ship `./out` + Python sidecar   |
 
-The frontend is Unicode-safe and direction-aware without UI string translation:
+Full deployment runbook: [`../DEPLOYMENT.md`](../DEPLOYMENT.md).
+
+## Internationalization & rendering
+
+Unicode-safe and direction-aware without UI string translation:
 
 - **Bidirectional text**: user-content containers (chat answers, source text,
   document names) use `dir="auto"`, so the browser picks LTR/RTL per the first
-  strong character. Arabic/Hebrew content renders correctly with no
-  language-specific branching.
-- **Font fallback stack** (in `tailwind.config.ts`):
-  `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
-  This resolves to the OS's native UI font, which carries broad script
-  coverage: PingFang/Hiragino (macOS CJK), Microsoft YaHei/Meiryo (Windows
-  CJK), Noto (Linux), and system Arabic/Hebrew faces. No web-font download
-  is required — consistent with local-first/offline operation.
-- **Locale formatting**: numbers/dates use `toLocaleString()` (browser locale).
-- **UI string translation (i18n)** is intentionally out of scope for this
-  phase — Unicode-safe *rendering* matters far more than translated chrome,
-  and `next-intl` can be layered on later without structural change.
+  strong character — Arabic/Hebrew render correctly with no language branching.
+- **Font stack** resolves to the OS UI font (broad script coverage: CJK, Arabic,
+  Hebrew) — no web-font download, consistent with local-first operation. Display
+  type uses Space Grotesk / Inter / JetBrains Mono via `next/font`.
+- **Locale formatting**: numbers/dates use `toLocaleString()`.
+- **UI string i18n** is intentionally out of scope — Unicode-safe *rendering*
+  matters more than translated chrome; `next-intl` can be layered on later.
 
 ## Tests
 
 Vitest + React Testing Library on happy-dom. Tests live in `tests/`:
 
 * `tests/unit/`        — API client, SSE parser, format helpers, hooks
-* `tests/components/`  — SourcePanel, DropZone, MetricsPanel
+* `tests/components/`  — AuthCard, SourcePanel, DropZone, MetricsPanel, Indexes/Models tabs, Bidi, Settings
 
 ```
-npm run test           # 58 tests pass
+npm run test           # 79 tests pass
 ```
+</content>
