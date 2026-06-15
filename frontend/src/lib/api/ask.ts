@@ -1,8 +1,9 @@
 // src/lib/api/ask.ts
 
-import { apiFetch, resolveBaseUrl } from "./client";
+import { apiFetch, defaultHeaders, resolveBaseUrl } from "./client";
 import { ApiError } from "./errors";
 import { parseSseStream } from "./sse";
+import { clearToken } from "@/lib/auth/token";
 import type { AskRequest, AskResponse, AskSseEvent } from "./types";
 
 /** Blocking ask — returns the full AskResponse. */
@@ -28,18 +29,24 @@ export async function* streamAsk(
   req: AskRequest,
   signal?: AbortSignal
 ): AsyncGenerator<AskSseEvent> {
-  const url = `${resolveBaseUrl()}/api/v1/ask`;
+  const base = resolveBaseUrl();
+  const url = `${base}/api/v1/ask`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      // Same bearer-token + ngrok handling as apiFetch — without this the
+      // stream 401s whenever auth is required (the blocking ask() path works
+      // because it goes through apiFetch).
+      ...defaultHeaders(base),
     },
     body: JSON.stringify({ ...req, stream: true }),
     signal,
   });
 
   if (!res.ok || !res.body) {
+    if (res.status === 401 && typeof window !== "undefined") clearToken();
     const requestId = res.headers.get("X-Request-ID");
     throw new ApiError({
       status: res.status,
