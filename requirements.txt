@@ -50,9 +50,6 @@ pydantic>=2.9.0                   # Data validation
 pydantic-settings>=2.0.0          # Env-driven settings (Settings.model_config)
 python-dotenv>=1.0.0              # .env file support for pydantic-settings
 
-# UI
-streamlit>=1.38.0                 # Web UI framework (legacy demo app; React frontend is in frontend/)
-
 # ----------------------------------------------------------------------------
 # Optional / not imported by the current codebase (kept for documented intent).
 # Verified unused repo-wide as of the Phase 11 cleanup pass; uncomment only if
