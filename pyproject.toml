@@ -1,4 +1,5 @@
-# C:\Users\use\OneDrive\Desktop\VectorFlow-RAG\pyproject.toml
+# pyproject.toml — formatting (black), import order (isort), typing (mypy),
+# and pytest configuration. Linting uses flake8 (.flake8).
 
 [tool.black]
 line-length = 127

@@ -20,6 +20,7 @@ bm25s[full]>=0.2.0                # BM25 lexical retrieval
 # Web Framework
 fastapi>=0.115.0                  # REST API framework
 uvicorn[standard]>=0.30.0         # ASGI server
+python-multipart>=0.0.9           # multipart form/file parsing (required by POST /ingest/files)
 
 # Document Loaders (Phase 4)
 pypdf>=4.0.0                      # PDF text extraction
@@ -37,6 +38,7 @@ psycopg2-binary>=2.9              # PostgreSQL driver (production; SQLite needs 
 bcrypt>=4.0                       # password hashing
 PyJWT>=2.8                        # JWT issue/verify
 email-validator>=2.0             # pydantic EmailStr validation
+cryptography>=42.0.0             # Fernet encryption-at-rest for the provider API-key store
 # OAuth (Google/GitHub) uses the authorization-code flow over `requests` (no SDK);
 # password-reset email uses stdlib smtplib when SMTP is configured.
 
@@ -44,6 +46,7 @@ email-validator>=2.0             # pydantic EmailStr validation
 requests>=2.32.0                  # HTTP client
 numpy>=1.26.0                     # Numerical computing
 tqdm>=4.66.0                      # Progress bars
+langid>=1.1.6                     # advisory language detection (Phase 11; lazy-imported, optional)
 
 # Config & Type Safety
 pydantic>=2.9.0                   # Data validation

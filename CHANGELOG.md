@@ -1,12 +1,59 @@
 # Changelog
 
-Local release summary for the VectorFlow-RAG platform build-out
-(Phases 3.5 → 11). All work is local; see `docs/ARCHITECTURE.md` for the
-full system reference.
+Release summary for the VectorFlow-RAG platform build-out
+(Phases 0 → 14). Local-first; see `docs/ARCHITECTURE.md` for the full system
+reference and `DEPLOYMENT.md` for the free hosted setup.
 
 Test totals quoted are from dual-backend runs (ChromaDB default + FAISS
 subset) at each phase boundary. The hard gate throughout: **English
 retrieval quality must not regress** — held at every phase.
+
+---
+
+## [2.0.0] — Authentication, multi-user & free deployment (Phase 14)
+
+Turns the single-tenant local platform into a deployable, multi-user product —
+without changing default/anonymous behavior (auth is opt-in via
+`VFR_AUTH__REQUIRED`).
+
+### Phase 14 — Accounts, auth & per-user stats
+- **Email/password** (bcrypt) + **Google/GitHub OAuth** (authorization-code flow
+  over `requests`, no SDK); HS256 **JWT** sessions; opaque password reset.
+- **SQLAlchemy** DB layer (`users`, `user_stats`) over `DATABASE_URL` — Postgres
+  in prod, SQLite locally. **Ingested documents are never stored** — only
+  accounts + per-user counters, with a self-service reset.
+- Data endpoints gate behind `require_user_if_enabled` (only when
+  `auth.required`); `get_optional_user` stays lazy, so the anonymous path is
+  byte-identical to pre-Phase-14. Provider API keys live in a Fernet-encrypted
+  server-side store.
+- Frontend: Render-inspired split-screen auth, route gating (`AppFrame`),
+  bearer-token client with 401→logout, per-user dashboard stats.
+
+### Professional UI redesign
+- Aurora design system (CSS-var palette, `next/font`, motion primitives,
+  `Constellation` canvas hero), glass components — applied across every page.
+
+### Free deployment (₹0)
+- Frontend on **Vercel**, backend self-hosted behind a **free tunnel** (ngrok
+  static domain / Cloudflare Quick Tunnel — no domain, no card), accounts/stats
+  in free **Postgres** (Neon/Supabase) or local SQLite; answer model via local
+  Ollama or a hosted key. Runbook: `DEPLOYMENT.md`.
+
+### Post-release maintenance
+- **perf**: index builds reuse ingest-time embeddings instead of re-embedding
+  the whole corpus (`get_embeddings` on both vector backends).
+- **fix**: macOS torch+faiss OpenMP segfault on threaded IVF/PQ training
+  (`OMP_NUM_THREADS=1` on Darwin); small-corpus build/benchmark hardening.
+- **fix**: streaming `ask` attaches the bearer token; ngrok browser-warning header.
+- **test**: suite made hermetic against a local `.env` (auth + `DATABASE_URL`).
+- **chore**: removed the legacy Streamlit app + workflow and stale committed
+  index fixtures; added the missing `python-multipart` / `cryptography` / `langid`
+  dependencies; de-duplicated `.gitignore`.
+
+### Verification
+- 975 backend tests (904 functions / 58 files) + 79 frontend ≈ **1,050 total**;
+  dual-backend; English retrieval parity preserved. Real ablations versioned in
+  `experiments/artifacts/` (FAISS recipes + multilingual profile).
 
 ---
 

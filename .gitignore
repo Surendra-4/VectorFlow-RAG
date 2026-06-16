@@ -1,30 +1,20 @@
-# Gitignore for Python projects
+# .gitignore — VectorFlow-RAG
+# (Note: .gitignore does not support trailing inline comments — keep comments
+#  on their own lines, never after a pattern.)
 
-# Virtual Environment
-.venv/
-venv/
-ENV/
-env/
-.env
-.venv/**/site-packages/
-.pytest_cache/
-pycache/
-*.pyc
-*.pyd
-*.whl
-*.egg-info
-*.dist-info
-.DS_Store
-
-# Python
+# ── Python ───────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-# NOTE: these Python packaging build dirs are anchored to the repo root with a
-# leading slash. Without the anchor, bare `lib/`/`build/`/`dist/` also match
-# nested non-Python dirs like `frontend/src/lib/`, silently un-tracking them.
+*.egg
+*.egg-info/
+*.dist-info/
+*.whl
+.installed.cfg
+# Packaging build dirs — anchored to the repo root with a leading slash so the
+# bare names don't also match nested non-Python dirs like frontend/src/lib/.
 /build/
 /develop-eggs/
 /dist/
@@ -35,79 +25,53 @@ __pycache__/
 /lib64/
 /parts/
 /sdist/
-/var/
 /wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
+# ── Virtual environments ─────────────────────────────────────────────────
+.venv/
+venv/
+ENV/
+env/
 
-# MLflow
-mlruns/
-.mlflow/
-
-# Data & Indices
+# ── Runtime state & local data (never committed) ─────────────────────────
+# /var holds app.db, secrets.json (encrypted provider keys), runtime_config.json
+/var/
+# vector stores & named indexes (re-ingestable)
 indices/*/
 data/*/
 *.db
 *.sqlite3
 
-# IDE
+# ── Secrets / local config ───────────────────────────────────────────────
+# .env.example / .env.production.example are templates and ARE tracked.
+.env
+config.toml
+
+# ── Testing ──────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Caches, logs, experiment tracking ────────────────────────────────────
+.cache/
+*.pkl
+*.pickle
+*.log
+mlruns/
+.mlflow/
+
+# ── Jupyter ──────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Editors & OS ─────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
-
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb
-
-# OS
-.DS_Store
 Thumbs.db
 
-# Credentials
-.env
-.streamlit/secrets.toml
-config.toml
-
-# Logs
-*.log
-
-# Cache
-.cache/
-*.pkl
-*.pickle
-
-.streamlit/secrets.toml
-
-
-# To be safe
-
-# local venv
-.venv/
-# pytest cache and python bytecode
-.pytest_cache/
-__pycache__/
-*.pyc
-# compiled extensions / wheels
-*.pyd
-*.whl
-*.egg-info/
-*.dist-info/
-/dist/
-/build/
-# Streamlit secrets
-.streamlit/secrets.toml
-# OS files
-.DS_Store
-# env files
-.env
-# Claude Code worktree metadata
+# ── Claude Code worktree metadata (local-only) ───────────────────────────
 .claude/
