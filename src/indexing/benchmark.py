@@ -11,6 +11,7 @@ those exact results.
 Metrics per index:
 
 * **Recall@K** — fraction of the exact top-K neighbors the index returns.
+* **NDCG@K** — rank quality vs. the exact ordering (graded; 1.0 = identical).
 * **MRR** — mean reciprocal rank of the true nearest neighbor.
 * **search latency** — mean / p50 / p95 (ms) and queries/sec.
 * **build/ingest speed** — chunks/sec during construction.
@@ -35,7 +36,7 @@ from src.logging_setup import get_logger
 
 logger = get_logger(__name__)
 
-BENCHMARK_SCHEMA_VERSION = 1
+BENCHMARK_SCHEMA_VERSION = 2  # v2 adds ndcg_at_k per recipe
 
 
 # --------------------------------------------------------------------------- #
@@ -73,6 +74,7 @@ class BenchmarkResult:
     dimension: int
     recall_at_k: float
     mrr: float
+    ndcg_at_k: float
     latency_ms_mean: float
     latency_ms_p50: float
     latency_ms_p95: float
@@ -98,6 +100,23 @@ def _percentile(values: List[float], pct: float) -> float:
     return float(np.percentile(np.asarray(values), pct))
 
 
+def _ndcg_at_k(got: Sequence[str], truth: Sequence[str]) -> float:
+    """Graded NDCG@k using exact search as the ideal ranking.
+
+    Relevance of a doc = its gain in the exact top-k (nearest neighbour gets
+    ``len(truth)``, …, the k-th gets ``1``). DCG over the approximate result
+    order is normalized by the ideal DCG (the exact order), so an index that
+    reproduces exact ranking scores 1.0 and one that mis-orders or misses the
+    true neighbours scores lower. This rewards *rank quality*, not just recall.
+    """
+    if not truth:
+        return 0.0
+    rel = {tid: (len(truth) - r) for r, tid in enumerate(truth)}
+    dcg = sum(rel.get(g, 0) / np.log2(j + 2) for j, g in enumerate(got))
+    idcg = sum((len(truth) - r) / np.log2(r + 2) for r in range(len(truth)))
+    return float(dcg / idcg) if idcg > 0 else 0.0
+
+
 def evaluate_store(
     store,
     queries: np.ndarray,
@@ -110,6 +129,7 @@ def evaluate_store(
     """
     recalls: List[float] = []
     rr: List[float] = []
+    ndcgs: List[float] = []
     latencies: List[float] = []
 
     for i in range(queries.shape[0]):
@@ -128,12 +148,14 @@ def evaluate_store(
             target = truth[0]
             rank = next((j + 1 for j, g in enumerate(got) if g == target), None)
             rr.append(1.0 / rank if rank else 0.0)
+            ndcgs.append(_ndcg_at_k(got, truth))
 
     total_s = sum(latencies) / 1000.0
     qps = (queries.shape[0] / total_s) if total_s > 0 else 0.0
     return {
         "recall_at_k": float(np.mean(recalls)) if recalls else 0.0,
         "mrr": float(np.mean(rr)) if rr else 0.0,
+        "ndcg_at_k": float(np.mean(ndcgs)) if ndcgs else 0.0,
         "latency_ms_mean": float(np.mean(latencies)) if latencies else 0.0,
         "latency_ms_p50": _percentile(latencies, 50),
         "latency_ms_p95": _percentile(latencies, 95),
@@ -239,6 +261,7 @@ def benchmark_recipes(
             dimension=dim,
             recall_at_k=scores["recall_at_k"],
             mrr=scores["mrr"],
+            ndcg_at_k=scores["ndcg_at_k"],
             latency_ms_mean=scores["latency_ms_mean"],
             latency_ms_p50=scores["latency_ms_p50"],
             latency_ms_p95=scores["latency_ms_p95"],

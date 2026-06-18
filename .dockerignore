@@ -1,0 +1,42 @@
+# Keep the build context (and image) small — the backend image needs only
+# requirements.txt + src/.
+
+# Environments & caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Frontend (deploys separately on Vercel)
+frontend/
+
+# Local data, runtime state & secrets
+var/
+indices/
+data/
+.env
+*.db
+*.sqlite3
+
+# Experiments / benchmark artifacts (not needed at runtime)
+experiments/
+mlruns/
+
+# Tests, docs, CI, tooling
+tests/
+docs/
+.github/
+*.md
+.flake8
+pyproject.toml
+
+# VCS & editor & OS
+.git/
+.gitignore
+.claude/
+.vscode/
+.idea/
+.DS_Store

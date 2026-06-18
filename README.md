@@ -146,6 +146,17 @@ The in-app benchmark scores each recipe against an exact-Flat ground truth — t
 
 Reading: **HNSW reproduces exact search** (0.998 R@10) with no training step; **IVF** triples throughput for a small recall cost; **IVF-PQ** compresses the index ~7× (5.5 MB → 0.75 MB) — the lever you pull when memory, not recall, is the constraint. `efSearch`/`nprobe` are live query-time knobs to move along this curve without rebuilding.
 
+### Ablation 1b — scaling to 100k vectors (384-dim, k = 10, NDCG@K added)
+Same harness on a **100,000-vector** corpus (clustered synthetic, 200 queries) — the index layer stays **sub-millisecond**:
+
+| Recipe | Recall@10 | NDCG@10 | p95 latency | QPS | Index size |
+|---|---|---|---|---|---|
+| **HNSW** | 0.974 | **0.984** | **0.14 ms** | 7,744 | 185 MB |
+| **IVF** (nprobe-tuned) | **1.000** | **1.000** | 0.37 ms | 3,049 | 159 MB |
+| flat (exact) | 1.000 | 1.000 | 3.99 ms | 283 | 158 MB |
+
+HNSW serves 100k vectors at **p95 ≈ 0.14 ms / NDCG@10 0.98**, ~28× faster than exact at ~97% recall; IVF matches exact quality at ~10× the throughput. (IVF-PQ on this distribution needs param tuning — its default recall is poor, an honest artifact in the JSON.)
+
 ### Ablation 2 — multilingual profile (golden corpus, 7 languages, k = 5)
 The hard gate: *English retrieval must not regress when multilingual support is added.* It held.
 
@@ -220,6 +231,7 @@ The heavy ML stack runs on **your machine**; only the lightweight frontend is ho
 - **Backend** → your Mac, exposed through a **free tunnel** — an **ngrok** free *static domain* (stable URL, no card) or a Cloudflare Quick Tunnel.
 - **Database** → free **Postgres** (Neon / Supabase) for accounts + stats, or local **SQLite**.
 - **Answer model** → local **Ollama** (free) or a hosted-provider key.
+- **Container** → the backend ships a production `Dockerfile` (slim Python 3.11, non-root, healthcheck, tesseract for OCR): `docker build -t vectorflow-rag . && docker run -p 8000:8000 --env-file .env vectorflow-rag` — for any host or a rented ≥2 GB instance.
 
 Auth, CORS, and OAuth callbacks are all environment-driven and HTTPS-aware. The full step-by-step (which env vars change per tunnel, OAuth app setup, smoke test, troubleshooting) is in **[`DEPLOYMENT.md`](DEPLOYMENT.md)**. A component-by-component analysis of what does and doesn't need a *stable* hostname (email/password & CORS don't; OAuth & the public frontend link do) is included there.
 

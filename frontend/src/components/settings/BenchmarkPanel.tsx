@@ -120,6 +120,7 @@ export function BenchmarkPanel() {
               <tr className="border-b border-border">
                 <th className="py-1 pr-3">Recipe</th>
                 <th className="py-1 pr-3">Recall@K</th>
+                <th className="py-1 pr-3">NDCG@K</th>
                 <th className="py-1 pr-3">MRR</th>
                 <th className="py-1 pr-3">p50</th>
                 <th className="py-1 pr-3">p95</th>
@@ -137,6 +138,7 @@ export function BenchmarkPanel() {
                       <Badge tone="accent">{r.recipe}</Badge>
                     </td>
                     <td className="py-1 pr-3 font-mono">{r.recall_at_k.toFixed(3)}</td>
+                    <td className="py-1 pr-3 font-mono">{(r.ndcg_at_k ?? 0).toFixed(3)}</td>
                     <td className="py-1 pr-3 font-mono">{r.mrr.toFixed(3)}</td>
                     <td className="py-1 pr-3">{formatLatencyMs(r.latency_ms_p50)}</td>
                     <td className="py-1 pr-3">{formatLatencyMs(r.latency_ms_p95)}</td>

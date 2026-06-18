@@ -432,6 +432,7 @@ export interface BenchmarkResultRow {
   dimension: number;
   recall_at_k: number;
   mrr: number;
+  ndcg_at_k: number;
   latency_ms_mean: number;
   latency_ms_p50: number;
   latency_ms_p95: number;

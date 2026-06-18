@@ -67,6 +67,8 @@ def test_flat_index_has_perfect_recall(temp_dir):
     scores = evaluate_store(store, q, truth, k=5)
     assert scores["recall_at_k"] == pytest.approx(1.0)
     assert scores["mrr"] == pytest.approx(1.0)
+    # Flat reproduces the exact ranking, so NDCG@k is perfect.
+    assert scores["ndcg_at_k"] == pytest.approx(1.0)
     assert scores["latency_ms_mean"] >= 0.0
     assert scores["queries_per_sec"] > 0.0
 
@@ -85,14 +87,16 @@ def test_benchmark_recipes_compares_multiple(temp_dir):
     )
     by = {r.recipe: r for r in results}
     assert set(by) == {"flat", "hnsw", "ivf"}
-    # Exact Flat must achieve perfect recall against itself.
+    # Exact Flat must achieve perfect recall + NDCG against itself.
     assert by["flat"].recall_at_k == pytest.approx(1.0)
-    # All report positive build + memory figures.
+    assert by["flat"].ndcg_at_k == pytest.approx(1.0)
+    # All report positive build + memory figures, and NDCG in [0, 1].
     for r in results:
         assert r.num_vectors == 300
         assert r.dimension == 16
         assert r.estimated_memory_bytes > 0
         assert r.ingest_vectors_per_sec > 0
+        assert 0.0 <= r.ndcg_at_k <= 1.0
 
 
 def test_benchmark_skips_unbuildable_recipe(temp_dir):
@@ -122,9 +126,10 @@ def test_benchmark_persists_artifact(temp_dir):
                       k=5, persist_path=out)
     assert out.exists()
     payload = json.loads(out.read_text())
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["n_vectors"] == 120
     assert len(payload["results"]) == 2
+    assert all("ndcg_at_k" in r for r in payload["results"])
 
 
 def test_benchmark_progress_callback(temp_dir):
